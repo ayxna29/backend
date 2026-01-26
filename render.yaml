@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: ConnectAAC
+    env: node
+    plan: free
+    repo: https://github.com/ayxna29/backend
+    branch: main
+    buildCommand: "npm ci && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: SUPABASE_URL
+        value: ""      # Set the actual URL in Render UI
+        scope: RUN_TIME
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: ""      # Set the actual key in Render UI
+        scope: RUN_TIME
+      - key: OPENAI_API_KEY
+        value: ""      # Optional, set in Render UI if used
+        scope: RUN_TIME
+      - key: WEBHOOK_SECRET
+        value: ""      # Optional, set in Render UI if used
+        scope: RUN_TIME
