@@ -45,7 +45,12 @@ function clampShortRaw(ans: string): string {
 
 const FILLER = new Set(['very','some','really','just','so','quite','kinda','kind','of']);
 
-function cleanAnswer(ans: string, contextLC: string, driftBlock: Set<string>, strict = true): string | null {
+function cleanAnswer(
+  ans: string,
+  contextLC: string,
+  driftBlock: Set<string>,
+  strict = true
+): string | null {
   let a = ans.trim();
   if (!a) return null;
 
@@ -82,9 +87,17 @@ function dedupeLowerLoose(arr: string[]): string[] {
 }
 
 function extractArray(raw: string): any[] {
-  try { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } catch {}
+  try {
+    const p = JSON.parse(raw);
+    if (Array.isArray(p)) return p;
+  } catch {}
   const m = raw.match(/\[[\s\S]*\]/);
-  if (m) { try { const p = JSON.parse(m[0]); if (Array.isArray(p)) return p; } catch {} }
+  if (m) {
+    try {
+      const p = JSON.parse(m[0]);
+      if (Array.isArray(p)) return p;
+    } catch {}
+  }
   return [];
 }
 
@@ -116,7 +129,8 @@ export async function generateFlashcards(
   previousAnswers = previousAnswers.filter(pa => {
     const paTokens = pa.split(/\s+/);
     // Keep if: answer overlaps with context OR is a common AAC connector word
-    return paTokens.some(pt => contextTokens.has(pt)) || /^(i|you|me|we|and|or|but|is|are|have|want|need|like|love|help|more|stop|go|yes|no)$/.test(pa);
+    return paTokens.some(pt => contextTokens.has(pt)) ||
+      /^(i|you|me|we|and|or|but|is|are|have|want|need|like|love|help|more|stop|go|yes|no)$/.test(pa);
   });
 
   const driftBlock = new Set(options.driftBlock || []);
@@ -124,22 +138,39 @@ export async function generateFlashcards(
 
   // ------------------- Build prompt -------------------
   const prompt = `
-You are generating AAC vocabulary flashcards.
+You generate AAC vocabulary flashcards (button labels) for a non-speaking user.
+
+CONTEXT:
+- The "USER PROMPT" is what someone else just said or what is happening around the user.
+- Each flashcard has one answer word or very short phrase that the user might want to tap/say.
 
 TASK:
-Given the USER PROMPT text, choose the best 1-2 word responses that the user might want to say.
+Given the USER PROMPT text, choose the best 1–2 word responses or useful words that:
+- the user might want to say next, OR
+- describe important people, places, actions, or feelings in this situation, OR
+- help the user build sentences (core words like I, you, want, go, not, more, help).
 
-RULES:
-- Answers MUST be 1 word whenever possible. Use 2 words only if absolutely necessary.
-- Each answer MUST be directly usable as something the user could tap/say in response.
-- Do NOT explain, describe, or use full sentences.
-- Use only plain words in English, no punctuation.
-- If you cannot think of enough good answers, return fewer items. Quality over quantity.
+COMMUNICATION RULES:
+- Answers must be real things the user could say, not labels like "answer", "question", "topic", "sentence".
+- Stay focused on this user’s situation. Avoid random or unrelated words.
+- Do NOT summarize the prompt. Do NOT describe what is happening. Just give words the user can use.
+- It is OK to use words that are not in any symbol list if they are genuinely useful for communication.
 
-${symbolList ? `AVAILABLE VOCABULARY (prefer these when relevant):\n${symbolList}\n\n` : ''}
+WORD RULES:
+- Answers MUST be 1 word whenever possible.
+- Use 2 words only when it clearly helps communication (e.g. "more please", "not happy").
+- Use only plain English words, no punctuation, no emojis, no abbreviations unless very common (e.g. ok).
+- Avoid filler words like "very", "really", "just", "kinda", "sort of" as standalone answers.
+- Do NOT output slurs, explicit sexual content, or insults, even if they appear in the USER PROMPT.
+- If the USER PROMPT is rude or unsafe, use safe words like "stop", "no", "help".
+
+${symbolList ? `AVAILABLE VOCABULARY (prefer these when relevant, but you MAY use other words too):
+${symbolList}
+
+` : ''}
 
 FORMAT:
-Return ONLY a valid JSON object, no markdown, like:
+Return ONLY a valid JSON object, no markdown, exactly like:
 {
   "cards": [
     {"question": "${context}", "answer": "<word1>"},
@@ -163,7 +194,11 @@ Generate up to ${requestedCount} answers, ordered by most useful first.
     messages: [
       { 
         role: 'system', 
-        content: 'You are an AAC assistant. Output only JSON as specified by the user. Each answer must be 1-2 plain English words usable as a button label. Do not add explanations, notes, or extra text.'
+        content: `
+You are an AAC assistant. Output only JSON as specified by the user.
+Each answer must be 1–2 plain English words usable as a button label.
+Do not add explanations, notes, or extra text before or after the JSON.
+`.trim()
       },
       { role: 'user', content: prompt }
     ]
@@ -183,7 +218,7 @@ Generate up to ${requestedCount} answers, ordered by most useful first.
 
   for (const o of arr) {
     if (!o || typeof o.answer !== 'string') continue;
-    let cleaned = cleanAnswer(o.answer, contextLC, driftBlock, !!options.strictSymbols);
+    const cleaned = cleanAnswer(o.answer, contextLC, driftBlock, !!options.strictSymbols);
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
     seen.add(cleaned);

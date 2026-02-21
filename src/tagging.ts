@@ -2,8 +2,7 @@ export function inferTagsFromCards(cards: {question:string; answer:string}[], ma
   const freq: Record<string, number> = {};
   const stop = new Set([
     'the','and','for','with','from','that','this','have','uses','into','over','what','how',
-    'why','when','which','their','they','are','was','were','will','can','has','its','between',
-    'pizza','food' // keep domain tags? remove if you want these inferred
+    'why','when','which','their','they','are','was','were','will','can','has','its','between' // keep domain tags? remove if you want these inferred
   ]);
   for (const c of cards) {
     const blob = `${c.question} ${c.answer}`.toLowerCase();
