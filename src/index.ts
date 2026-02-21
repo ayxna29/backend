@@ -35,7 +35,7 @@ const __dirname = dirname(__filename);
 
 const MODEL_NAME = process.env.MODEL_NAME || 'gpt-5-nano'; // override default model
 const PORT = Number(process.env.PORT || 5000);
-const DEFAULT_COUNT = 15;
+const DEFAULT_COUNT = 30;
 const ENABLE_EMBED = (process.env.ENABLE_EMBEDDING || 'true').toLowerCase() === 'true';
 
 const ANSWER_LENGTHS = new Set(['short', 'medium', 'long', 'mixed']);
