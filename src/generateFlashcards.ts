@@ -148,11 +148,11 @@ TASK:
 Given the USER PROMPT text, choose the best 1–2 word responses or useful words that:
 - the user might want to say next, OR
 - describe important people, places, actions, or feelings in this situation, OR
-- help the user build sentences (core words like I, you, want, go, not, more, help).
+- help the user build sentences
 
 COMMUNICATION RULES:
 - Answers must be real things the user could say, not labels like "answer", "question", "topic", "sentence".
-- Stay focused on this user’s situation. Avoid random or unrelated words.
+- Stay focused on this user’s situation. AVOID random or unrelated words.
 - Do NOT summarize the prompt. Do NOT describe what is happening. Just give words the user can use.
 - It is OK to use words that are not in any symbol list if they are genuinely useful for communication.
 
@@ -163,6 +163,12 @@ WORD RULES:
 - Avoid filler words like "very", "really", "just", "kinda", "sort of" as standalone answers.
 - Do NOT output slurs, explicit sexual content, or insults, even if they appear in the USER PROMPT.
 - If the USER PROMPT is rude or unsafe, use safe words like "stop", "no", "help".
+
+Given the USER PROMPT, imagine 5-6 complete replies the user might want to say (like "I am good" or "I was hungry").
+Then list the IMPORTANT WORDS from those replies as SEPARATE flashcards so the user can tap them to build sentences.
+
+"how are you?" → "I am good" → flashcards: "I", "am", "good"
+"did you eat?" → "I was hungry" → flashcards: "I", "was", "hungry"
 
 ${symbolList ? `AVAILABLE VOCABULARY (prefer these when relevant, but you MAY use other words too):
 ${symbolList}
