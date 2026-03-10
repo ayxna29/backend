@@ -70,7 +70,7 @@ interface TraceRequest extends Request { traceId?: string; }
 
 function loadSymbolData() {
   try {
-    const csvPath = path.resolve(__dirname, '../../AAC/assets/symbol-info.csv');
+    const csvPath = path.resolve(__dirname, '../assets/symbol-info.csv');
     if (!fs.existsSync(csvPath)) {
       console.error('[SYMBOLS] CSV not found:', csvPath);
       return { symbols: [], vocabulary: [] };
@@ -475,7 +475,10 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const hasFoodTag = incomingTags.includes('food');
     const hasFeelingTag = incomingTags.includes('feelings') || incomingTags.includes('emotion');
 
-    const preferSymbols = hasFoodTag || needContextRegex.test(context) || hasFeelingTag || emotionContextRegex.test(context);
+    const preferFood = hasFoodTag || needContextRegex.test(context);
+    const preferEmotions = hasFeelingTag || emotionContextRegex.test(context);
+    // preferSymbols kept for backward compat but now split by type
+    const preferSymbols = preferFood || preferEmotions;
 
     // Small rule-based handler for conversational 'how are you' prompts.
     const howAreYouRegex = /\b(?:how\s+are\s+(you|u)|how\s+r\s+you|how\s+do\s+you\s+feel|how\s+are\s+you\s+feeling)\b/i;
@@ -586,18 +589,24 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     // Fallback fill if short
     if (deduped.length < requestedCount) {
-      // Choose a context-aware fallback pool. If the prompt looks like a food/need
-      // context (preferSymbols was set earlier), prefer food-related items so we
-      // don't fill with emotions/ack words.
+      // Pick fallback pool based on WHAT TYPE of context we're in
       const foodFallback = [
-        'pancakes','cake','sandwich','pizza','salad','soup','pasta','fruit','apple','bread','cereal','burger','cookies','rice','noodles','eggs'
+        'pancakes','cake','sandwich','pizza','salad','soup','pasta',
+        'fruit','apple','bread','cereal','burger','cookies','rice','noodles','eggs'
+      ];
+      const emotionFallback = [
+        'happy','sad','angry','calm','worried','excited','tired',
+        'fine','good','okay','scared','confused','proud','lonely','bored'
       ];
       const genericFallback = [
-        'okay','good','fine','tired','happy','sad','angry','calm',
-        'worried','excited','help','more','stop','yes','no','rest','hungry','thirsty'
+        'help','more','stop','yes','no','rest','hungry','thirsty','please','done'
       ];
 
-      const pool = preferSymbols ? foodFallback.concat(genericFallback) : genericFallback.concat(foodFallback);
+      const pool = preferFood
+        ? foodFallback.concat(genericFallback).concat(emotionFallback)
+        : preferEmotions
+          ? emotionFallback.concat(genericFallback).concat(foodFallback)
+          : genericFallback.concat(emotionFallback).concat(foodFallback);
       console.log('[FALLBACK POOL]', { gen: generationId, preferSymbols, poolSample: pool.slice(0,6) });
       for (const w of pool) {
         if (deduped.length >= requestedCount) break;
