@@ -3,8 +3,7 @@ import OpenAI from 'openai';
 export interface Flashcard {
   question: string;
   answer: string;
-  role?: CardRole; // expose role so UI can style/group cards
-  fitz?: FitzCategory | null;
+  fitz?: string | null;
 }
 
 export interface FlashcardGenResult {
@@ -13,31 +12,15 @@ export interface FlashcardGenResult {
   modelUsed: string;
 }
 
-// ── Card roles ────────────────────────────────────────────────────────────────
-// "core"    → high-frequency sentence builders: I, you, want, need, like, more, no, yes, help, stop, go
-// "content" → topic-specific nouns / verbs / adjectives: hungry, school, happy, tired …
-// "phrase"  → short 2-word combos that are useful as a unit: "not happy", "want more", "all done"
-type CardRole = 'core' | 'content' | 'phrase';
-// Fitzgerald Key skin tone categories
-type FitzCategory =
-  | 'person'      // pronouns (I, you, he, she, they)
-  | 'verb'        // actions (want, go, eat, help)
-  | 'descriptor'  // adjectives (happy, tired, big)
-  | 'noun'        // things (school, water, dog)
-  | 'social'      // yes/no/please/thanks
-  | 'question'    // what/where/who/when
-  | null;
-
 interface FlashcardGenOptions {
   relatedPrompts?: string[];
   previousAnswers?: string[];
-  hardBan?: string[];        // never appear regardless of context (replaces driftBlock for strict bans)
-  softDeprioritize?: string[]; // deprioritize but allow if highly relevant
+  hardBan?: string[];
+  softDeprioritize?: string[];
   strictSymbols?: boolean;
   preferSymbols?: boolean;
 }
 
-// ── OpenAI client ─────────────────────────────────────────────────────────────
 let openaiClient: OpenAI | null = null;
 function getOpenAI(): OpenAI {
   if (openaiClient) return openaiClient;
@@ -47,25 +30,13 @@ function getOpenAI(): OpenAI {
   return openaiClient;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_CONTEXT_TOKENS = Number(process.env.MAX_CONTEXT_TOKENS || 450);
 
-// Core vocabulary that should always be available for sentence building
-// regardless of topic — these are the "glue" words of AAC communication
-const CORE_VOCAB = new Set([
-  'i', 'you', 'we', 'me', 'my', 'it', 'he', 'she', 'they',
-  'want', 'need', 'like', 'love', 'feel', 'am', 'is', 'was',
-  'have', 'do', 'go', 'help', 'stop', 'more', 'done', 'no',
-  'yes', 'not', 'and', 'but', 'or', 'can', 'will', 'please',
-]);
-
-// These are useless as standalone AAC buttons
 const ALWAYS_STRIP = new Set([
   'very', 'really', 'just', 'so', 'quite', 'kinda', 'kind',
   'of', 'a', 'an', 'the', 'that', 'this', 'those', 'these',
 ]);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function trimContext(raw: string): string {
   const parts = raw.split(/\s+/);
   return parts.length <= MAX_CONTEXT_TOKENS
@@ -112,60 +83,26 @@ function extractArray(raw: string): any[] {
   return [];
 }
 
-// ── cleanAnswer (the critical fix) ───────────────────────────────────────────
-//
-// OLD PROBLEMS:
-//   1. slice(0,2) hard-clamp destroyed valid 2-word phrases
-//   2. driftBlock nuked words entirely even when contextually relevant
-//   3. strict regex /^[a-z ]{1,40}$/ blocked valid apostrophe words
-//   4. No concept of card role — everything was judged by the same rules
-//
-// NEW APPROACH:
-//   • Validate by role (core / phrase / content have different length rules)
-//   • hardBan = absolute veto; softDeprioritize = lower priority but allowed
-//   • Never strip a word just because it's in driftBlock if context contains it
-
-function cleanAnswer(
-  raw: string,
-  role: CardRole,
-  contextLC: string,
-  hardBan: Set<string>,
-  softDeprioritize: Set<string>,
-): string | null {
+function cleanAnswer(raw: string, hardBan: Set<string>): string | null {
   let a = normalise(raw);
   if (!a) return null;
 
   const words = a.split(' ').filter(Boolean);
 
-  // Role-based length gates
-  if (role === 'core' && words.length > 1) return null;       // core = single word only
-  if (role === 'content' && words.length > 2) return null;    // content = 1–2 words
-  if (role === 'phrase' && (words.length < 2 || words.length > 3)) return null; // phrase = 2–3 words
+  // Single words only
+  if (words.length > 1) return null;
 
-  // Strip always-useless filler words
   const filtered = words.filter(w => !ALWAYS_STRIP.has(w));
   if (filtered.length === 0) return null;
-  a = filtered.join(' ');
+  a = filtered[0];
 
-  // Hard ban — absolute veto regardless of context
-  for (const w of filtered) {
-    if (hardBan.has(w)) return null;
-  }
+  if (hardBan.has(a)) return null;
 
-  // Soft deprioritize — allow if the word appears in context (contextually earned)
-  // Returns null here so caller can push it to a lower-priority bucket
-  const isDeprioritized = filtered.some(
-    w => softDeprioritize.has(w) && !contextLC.includes(w)
-  );
-  if (isDeprioritized) return null; // caller can re-attempt with softer rules if needed
-
-  // Final sanity: only plain text, allow apostrophes for contractions
-  if (!/^[a-z' ]{1,40}$/.test(a)) return null;
+  if (!/^[a-z']{1,40}$/.test(a)) return null;
 
   return a;
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
 export async function generateFlashcards(
   context: string,
   requestedCount: number,
@@ -177,10 +114,8 @@ export async function generateFlashcards(
   availableSymbols: string[] = [],
 ) {
   context = trimContext(context);
-  const contextLC = context.toLowerCase();
 
   const hardBan = new Set((options.hardBan || []).map(w => normalise(w)));
-  const softDeprioritize = new Set((options.softDeprioritize || []).map(w => normalise(w)));
 
   const previousAnswers = dedupeLower(
     (options.previousAnswers || [])
@@ -189,102 +124,68 @@ export async function generateFlashcards(
       .slice(0, 40)
   );
 
-  const symbolList = availableSymbols
-    .slice(0, 150)
-    .map(s => s.replace('.svg', '').replace(/_/g, ' ').toLowerCase())
-    .join(', ');
+  // 70% context words, 30% sentence builders
+  // For 30 cards: ~21 topic words covering the situation broadly + ~9 glue words
+  const contentCount = Math.max(2, Math.round(requestedCount * 0.70));
+  const coreCount = requestedCount - contentCount;
 
-  // How many of each role to request
-  // ~30% core (sentence glue), ~40% content (topic words), ~30% phrase (useful combos)
-  const coreCount  = Math.max(2, Math.round(requestedCount * 0.30));
-  const phraseCount = Math.max(2, Math.round(requestedCount * 0.25));
-  const contentCount = requestedCount - coreCount - phraseCount;
+  const hardBanLine = Array.from(hardBan).length > 0
+    ? `- NEVER include: ${Array.from(hardBan).join(', ')}`
+    : '';
+  const prevLine = previousAnswers.length > 0
+    ? `- Already shown recently, skip: ${previousAnswers.slice(0, 15).join(', ')}`
+    : '';
 
-  // ── Prompt ──────────────────────────────────────────────────────────────────
-  //
-  // KEY DESIGN DECISIONS:
-  //  1. Explicit role system tells model EXACTLY what type of card to generate
-  //     → Fixes the "all individual words" vs "all random phrases" inconsistency
-  //  2. "Imagine 3 full sentences" chain-of-thought is preserved but now feeds
-  //     into role-aware extraction instead of generic word dumping
-  //  3. Ban system is explicit and tiered in the prompt itself
-  //  4. Symbol list is a soft preference, not a hard constraint
-  //
-  const prompt = `
-Each card should include:
-  - question: string
-  - answer: string
-  - role: 'core' | 'content' | 'phrase'
+  const prompt = [
+    `You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.`,
+    `A non-speaking person taps these cards one at a time to build sentences and communicate.`,
+    ``,
+    `SITUATION: "${context}"`,
+    ``,
+    `STEP 1 - Imagine 6 different things this person might want to say. Do NOT output them.`,
+    `Think broadly - different needs, emotions, and responses all related to the situation.`,
+    ``,
+    `STEP 2 - Extract SINGLE WORDS only. Never put 2 or 3 words on one card.`,
+    ``,
+    `SECTION A - CONTEXT WORDS (generate exactly ${contentCount})`,
+    `Single words directly relevant to this situation. Cover the full range of what someone might want to express.`,
+    `Order them: most immediately useful and specific first, broader/secondary words later.`,
+    `Use ALL ${contentCount} slots - go deep into the topic, don't repeat, don't pad with generic words.`,
+    ``,
+    `SECTION B - SENTENCE BUILDERS (generate exactly ${coreCount})`,
+    `From the 6 sentences you imagined, extract the glue words that hold them together.`,
+    `Infer what's needed - pronouns, verbs, linking words. Every situation needs different builders.`,
+    ``,
+    `RULES:`,
+    `- Every answer = exactly 1 word, lowercase, no punctuation`,
+    `- Never output meta-words: answer, question, topic, sentence, response, example, word`,
+    `- No duplicates`,
+    hardBanLine,
+    prevLine,
+    ``,
+    `FITZGERALD KEY - add "fitz" to every card:`,
+    `  "person"     -> i, you, he, she, we, they, me, my, mom, dad, friend`,
+    `  "verb"       -> actions/states: hurt, feel, am, is, want, need, go, eat, help, do, have`,
+    `  "descriptor" -> adjectives/feelings: good, bad, happy, sad, tired, sick, sore, better, hot, cold`,
+    `  "noun"       -> things/places/body parts: head, home, food, school, arm, stomach, water`,
+    `  "social"     -> yes, no, please, more, stop, done, help, again, wait, sorry`,
+    `  "question"   -> what, where, when, why, who, how`,
+    ``,
+    `OUTPUT - return ONLY valid JSON, no markdown:`,
+    `{`,
+    `  "cards": [`,
+    `    {"question": "${context}", "answer": "head", "fitz": "noun"},`,
+    `    {"question": "${context}", "answer": "stomach", "fitz": "noun"},`,
+    `    {"question": "${context}", "answer": "hurts", "fitz": "verb"},`,
+    `    {"question": "${context}", "answer": "i", "fitz": "person"},`,
+    `    {"question": "${context}", "answer": "my", "fitz": "person"}`,
+    `  ]`,
+    `}`,
+    ``,
+    `Generate exactly ${requestedCount} cards. Section A first (context words), Section B last (sentence builders).`,
+  ].filter(l => l !== null && l !== undefined).join('\n');
 
-  - fitz: 'person' | 'verb' | 'descriptor' | 'noun' | 'social' | 'question' | null
-
-Fitzgerald Key categories:
-  person: pronouns (I, you, he, she, they)
-  verb: actions (want, go, eat, help)
-  descriptor: adjectives (happy, tired, big)
-  noun: things (school, water, dog)
-  social: yes/no/please/thanks
-  question: what/where/who/when
-
-You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.
-A non-speaking user will tap these cards to build sentences and express themselves.
-
-═══════════════════════════════════════════
-STEP 1 — Understand the situation
-═══════════════════════════════════════════
-USER PROMPT: "${context}"
-
-Imagine 3 things the user might want to say in response to this situation.
-Write them as full sentences in your head (do NOT output them).
-Example: if prompt is "how are you?" → think "I am good", "I feel tired", "I want water"
-
-═══════════════════════════════════════════
-STEP 2 — Generate 3 types of cards
-═══════════════════════════════════════════
-From those imagined sentences, extract words into these three roles:
-
-ROLE: "core"  (generate exactly ${coreCount})
-  • High-frequency sentence-building words the user needs to say ANYTHING
-  • Examples: I, you, want, need, feel, am, not, more, help, stop, yes, no, done
-  • Must be 1 word only
-  • Always include relevant ones even if not in the symbol list
-
-ROLE: "content"  (generate exactly ${contentCount})
-  • Topic-specific words for THIS situation — nouns, verbs, adjectives
-  • Examples for "how are you?": good, tired, hungry, happy, sad, sick
-  • 1–2 words max
-  • These change with every prompt — be specific to the situation
-
-ROLE: "phrase"  (generate exactly ${phraseCount})
-  • Short 2–3 word combos that are useful as a single tap
-  • Examples: "not happy", "want more", "all done", "i want", "feel sick"
-  • Only use 2–3 words, never single words in this role
-
-═══════════════════════════════════════════
-RULES
-═══════════════════════════════════════════
-✓ Every card must be something the user could actually SAY or TAP to communicate
-✓ Plain English only — no punctuation, no emojis, no abbreviations (except: ok, dont, cant)
-✓ No meta-words: never output "answer", "question", "topic", "sentence", "word", "phrase"
-✗ HARD BAN — never output these regardless of context: ${Array.from(hardBan).join(', ') || 'none'}
-⚠ AVOID unless clearly relevant to prompt: ${Array.from(softDeprioritize).join(', ') || 'none'}
-${previousAnswers.length > 0 ? `↺ Already shown recently (avoid duplicating): ${previousAnswers.slice(0, 20).join(', ')}` : ''}
-${symbolList ? `◈ Prefer these vocabulary symbols when relevant (but you MAY use other words): ${symbolList}` : ''}
-
-═══════════════════════════════════════════
-OUTPUT FORMAT
-═══════════════════════════════════════════
-Return ONLY valid JSON, no markdown, no extra text:
-{
-  "cards": [
-    {"question": "${context}", "answer": "I", "role": "core"},
-    {"question": "${context}", "answer": "good", "role": "content"},
-    {"question": "${context}", "answer": "feel tired", "role": "phrase"}
-  ]
-}
-`.trim();
-
-  const modelUsed = process.env.FAST_MODEL_NAME || 'gpt-4o-mini';
+  const modelUsed = process.env.FAST_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o-mini';
   const temperature = Number(process.env.GEN_TEMPERATURE ?? 0.15);
   const openai = getOpenAI();
 
@@ -295,10 +196,12 @@ Return ONLY valid JSON, no markdown, no extra text:
     messages: [
       {
         role: 'system',
-        content: `You are an AAC communication assistant. 
-Output ONLY the JSON object specified. No preamble, no explanation, no markdown.
-Every "answer" must be words a non-speaking person would tap to communicate — never meta-labels.
-Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 words.`.trim()
+        content: [
+          'You are an AAC communication assistant.',
+          'Output ONLY the JSON object specified. No preamble, no explanation, no markdown.',
+          'Every "answer" must be a single word a non-speaking person would tap to communicate.',
+          'NEVER combine multiple words into one answer. Each card = exactly one word.',
+        ].join('\n'),
       },
       { role: 'user', content: prompt }
     ]
@@ -306,7 +209,6 @@ Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 word
 
   const raw = completion.choices?.[0]?.message?.content || '{"cards":[]}';
 
-  // ── Parse & filter ──────────────────────────────────────────────────────────
   let arr: any[] = [];
   try {
     const obj = JSON.parse(raw);
@@ -315,64 +217,42 @@ Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 word
     arr = extractArray(raw);
   }
 
+  const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
+
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
 
-  // First pass: strict validation per role
   for (const o of arr) {
     if (!o || typeof o.answer !== 'string') continue;
-    const role: CardRole = (['core','content','phrase'].includes(o.role)) ? o.role : 'content';
-    const cleaned = cleanAnswer(o.answer, role, contextLC, hardBan, softDeprioritize);
+    const cleaned = cleanAnswer(o.answer, hardBan);
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
     seen.add(cleaned);
-    cards.push({ question: context, answer: cleaned, role, fitz: o.fitz ?? null });
+    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
+    cards.push({ question: context, answer: cleaned, fitz });
     if (cards.length >= requestedCount) break;
   }
 
-  // Second pass: if still under-count, retry with softDeprioritize relaxed
-  // (allow soft-banned words if they appeared in context)
+  // Second pass if under count
   if (cards.length < requestedCount) {
-    const emptySoft = new Set<string>(); // no soft bans this round
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
       if (!o || typeof o.answer !== 'string') continue;
-      const role: CardRole = (['core','content','phrase'].includes(o.role)) ? o.role : 'content';
-      const cleaned = cleanAnswer(o.answer, role, contextLC, hardBan, emptySoft);
-      if (!cleaned) continue;
-      if (seen.has(cleaned)) continue;
+      const cleaned = cleanAnswer(o.answer, hardBan);
+      if (!cleaned || seen.has(cleaned)) continue;
       seen.add(cleaned);
-      cards.push({ question: context, answer: cleaned, role, fitz: o.fitz ?? null });
+      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
+      cards.push({ question: context, answer: cleaned, fitz });
     }
   }
-
-  // Minimal symbol fallback: only if critically empty
-  if (cards.length < Math.ceil(requestedCount * 0.2) && availableSymbols.length > 0) {
-    for (const sym of availableSymbols.map(s => s.replace('.svg','').replace(/_/g,' ').toLowerCase())) {
-      if (cards.length >= requestedCount) break;
-      const n = normalise(sym);
-      if (!n || seen.has(n) || hardBan.has(n)) continue;
-      seen.add(n);
-      cards.push({ question: context, answer: n, role: 'content', fitz: null });
-    }
-  }
-
-  // Sort: core first, then content, then phrase — natural sentence-building order
-  const roleOrder: Record<CardRole, number> = { core: 0, content: 1, phrase: 2 };
-  cards.sort((a, b) => roleOrder[a.role ?? 'content'] - roleOrder[b.role ?? 'content']);
 
   if (cards.length > requestedCount) cards.length = requestedCount;
 
   console.log('[GEN STATS]', {
     requested: requestedCount,
     produced: cards.length,
-    byRole: {
-      core: cards.filter(c => c.role === 'core').length,
-      content: cards.filter(c => c.role === 'content').length,
-      phrase: cards.filter(c => c.role === 'phrase').length,
-    },
-    hardBanned: Array.from(hardBan).slice(0, 8),
-    softDeprio: Array.from(softDeprioritize).slice(0, 8),
+    model: modelUsed,
+    sample: cards.slice(0, 6).map(c => `${c.answer}(${c.fitz})`),
   });
 
   return { cards, rawContent: raw, modelUsed };
