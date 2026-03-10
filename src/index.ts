@@ -563,8 +563,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       seenAnswers.add(answer);
       deduped.push({
         question: originalPromptQuestion,
-        answer,
-        role: (c as any).role ?? 'content'
+        answer
       });
       if (deduped.length >= requestedCount) break;
     }
@@ -736,8 +735,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     // ---------- Length clamp (short only 1–3 words) ----------
     keptCards = keptCards.map(c => ({
       question: c.question.length > 80 ? c.question.slice(0,77).trimEnd() + '…' : c.question,
-      answer: clampShort(c.answer),
-      role: c.role ?? 'content'
+      answer: clampShort(c.answer)
     }));
     console.log('[POST-CLAMP SHORT]', {
       gen: generationId,
@@ -763,7 +761,6 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         user_id: user.id,
         question: c.question,
         answer: c.answer,
-        role: (c as any).role ?? 'content',
         asset_filename: symbolFile, // Use matched filename
         tag: tag || null,
         embedding: keptEmbeddings[i],
