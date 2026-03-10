@@ -563,7 +563,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       seenAnswers.add(answer);
       deduped.push({
         question: originalPromptQuestion,
-        answer
+        answer,
+        role: 'content'
       });
       if (deduped.length >= requestedCount) break;
     }
@@ -735,7 +736,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     // ---------- Length clamp (short only 1–3 words) ----------
     keptCards = keptCards.map(c => ({
       question: c.question.length > 80 ? c.question.slice(0,77).trimEnd() + '…' : c.question,
-      answer: clampShort(c.answer)
+      answer: clampShort(c.answer),
+      role: c.role ?? 'content'
     }));
     console.log('[POST-CLAMP SHORT]', {
       gen: generationId,
