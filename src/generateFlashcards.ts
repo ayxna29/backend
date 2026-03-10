@@ -20,12 +20,12 @@ export interface FlashcardGenResult {
 type CardRole = 'core' | 'content' | 'phrase';
 // Fitzgerald Key skin tone categories
 type FitzCategory =
-  | 'fitz_1' // Pale white
-  | 'fitz_2' // Fair
-  | 'fitz_3' // Medium
-  | 'fitz_4' // Olive
-  | 'fitz_5' // Brown
-  | 'fitz_6' // Dark brown
+  | 'person'      // pronouns (I, you, he, she, they)
+  | 'verb'        // actions (want, go, eat, help)
+  | 'descriptor'  // adjectives (happy, tired, big)
+  | 'noun'        // things (school, water, dog)
+  | 'social'      // yes/no/please/thanks
+  | 'question'    // what/where/who/when
   | null;
 
 interface FlashcardGenOptions {
@@ -215,15 +215,16 @@ Each card should include:
   - question: string
   - answer: string
   - role: 'core' | 'content' | 'phrase'
-  - fitz: 'fitz_1' | 'fitz_2' | 'fitz_3' | 'fitz_4' | 'fitz_5' | 'fitz_6' | null
+
+  - fitz: 'person' | 'verb' | 'descriptor' | 'noun' | 'social' | 'question' | null
 
 Fitzgerald Key categories:
-  fitz_1: Pale white
-  fitz_2: Fair
-  fitz_3: Medium
-  fitz_4: Olive
-  fitz_5: Brown
-  fitz_6: Dark brown
+  person: pronouns (I, you, he, she, they)
+  verb: actions (want, go, eat, help)
+  descriptor: adjectives (happy, tired, big)
+  noun: things (school, water, dog)
+  social: yes/no/please/thanks
+  question: what/where/who/when
 
 You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.
 A non-speaking user will tap these cards to build sentences and express themselves.
