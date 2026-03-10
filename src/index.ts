@@ -463,7 +463,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     const relatedPrompts: string[] = [];
     const previousAnswers: string[] = [];
-    const driftBlock: string[] = [];
+    const hardBan: string[] = [];
+    const softDeprioritize: string[] = [];
 
     // Decide whether to prefer symbol vocabulary for this prompt.
     // We prefer symbols for need/food contexts and emotion contexts, but do
@@ -504,11 +505,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       {
         relatedPrompts,
         previousAnswers,
-        driftBlock: Array.from(driftBlock),
-        preferSymbols: preferSymbols,
-        // strictSymbols left false so we don't force only tag answers
+        hardBan,
+        softDeprioritize,
+        preferSymbols,
       },
-      AVAILABLE_SYMBOLS // Pass symbols here
+      AVAILABLE_SYMBOLS
       );
       genResult = { cards, rawContent, modelUsed };
     }
@@ -530,13 +531,14 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         if (c && typeof c === 'object') {
           const q = (c as any).question ?? (c as any).Question;
           const a = (c as any).answer ?? (c as any).Answer;
+          const r = (c as any).role ?? 'content';
           if (typeof q === 'string' && typeof a === 'string') {
-            return { question: q, answer: a };
+            return { question: q, answer: a, role: r };
           }
         }
         return null;
-  })
-      .filter(Boolean) as { question: string; answer: string }[];
+      })
+      .filter(Boolean) as { question: string; answer: string; role: string }[];
 
     const originalPromptQuestion = context; // ensure we only store the user prompt
 
@@ -551,7 +553,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         .join(' ');
     }
 
-  let deduped: { question: string; answer: string }[] = [];
+  let deduped: { question: string; answer: string; role: string }[] = [];
     const seenAnswers = new Set<string>();
 
     for (const c of rawCards) {
@@ -561,7 +563,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       seenAnswers.add(answer);
       deduped.push({
         question: originalPromptQuestion,
-        answer
+        answer,
+        role: (c as any).role ?? 'content'
       });
       if (deduped.length >= requestedCount) break;
     }
@@ -600,7 +603,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         if (deduped.length >= requestedCount) break;
         if (seenAnswers.has(w)) continue;
         seenAnswers.add(w);
-        deduped.push({ question: originalPromptQuestion, answer: w });
+        deduped.push({ question: originalPromptQuestion, answer: w, role: 'content' });
       }
     }
 
@@ -733,7 +736,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     // ---------- Length clamp (short only 1–3 words) ----------
     keptCards = keptCards.map(c => ({
       question: c.question.length > 80 ? c.question.slice(0,77).trimEnd() + '…' : c.question,
-      answer: clampShort(c.answer)
+      answer: clampShort(c.answer),
+      role: c.role ?? 'content'
     }));
     console.log('[POST-CLAMP SHORT]', {
       gen: generationId,
@@ -754,12 +758,12 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const rows = keptCards.map((c, i) => {
       // Match the answer to an actual symbol filename
       const symbolFile = matchSymbolFilename(c.answer, AVAILABLE_SYMBOLS);
-      
       return {
         generation_id: generationId,
         user_id: user.id,
         question: c.question,
         answer: c.answer,
+        role: (c as any).role ?? 'content',
         asset_filename: symbolFile, // Use matched filename
         tag: tag || null,
         embedding: keptEmbeddings[i],
