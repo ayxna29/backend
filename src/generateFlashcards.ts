@@ -4,6 +4,7 @@ export interface Flashcard {
   question: string;
   answer: string;
   role?: CardRole; // expose role so UI can style/group cards
+  fitz?: FitzCategory | null;
 }
 
 export interface FlashcardGenResult {
@@ -17,6 +18,15 @@ export interface FlashcardGenResult {
 // "content" → topic-specific nouns / verbs / adjectives: hungry, school, happy, tired …
 // "phrase"  → short 2-word combos that are useful as a unit: "not happy", "want more", "all done"
 type CardRole = 'core' | 'content' | 'phrase';
+// Fitzgerald Key skin tone categories
+type FitzCategory =
+  | 'fitz_1' // Pale white
+  | 'fitz_2' // Fair
+  | 'fitz_3' // Medium
+  | 'fitz_4' // Olive
+  | 'fitz_5' // Brown
+  | 'fitz_6' // Dark brown
+  | null;
 
 interface FlashcardGenOptions {
   relatedPrompts?: string[];
@@ -201,6 +211,20 @@ export async function generateFlashcards(
   //  4. Symbol list is a soft preference, not a hard constraint
   //
   const prompt = `
+Each card should include:
+  - question: string
+  - answer: string
+  - role: 'core' | 'content' | 'phrase'
+  - fitz: 'fitz_1' | 'fitz_2' | 'fitz_3' | 'fitz_4' | 'fitz_5' | 'fitz_6' | null
+
+Fitzgerald Key categories:
+  fitz_1: Pale white
+  fitz_2: Fair
+  fitz_3: Medium
+  fitz_4: Olive
+  fitz_5: Brown
+  fitz_6: Dark brown
+
 You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.
 A non-speaking user will tap these cards to build sentences and express themselves.
 
@@ -301,7 +325,7 @@ Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 word
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
     seen.add(cleaned);
-    cards.push({ question: context, answer: cleaned, role });
+    cards.push({ question: context, answer: cleaned, role, fitz: o.fitz ?? null });
     if (cards.length >= requestedCount) break;
   }
 
@@ -317,7 +341,7 @@ Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 word
       if (!cleaned) continue;
       if (seen.has(cleaned)) continue;
       seen.add(cleaned);
-      cards.push({ question: context, answer: cleaned, role });
+      cards.push({ question: context, answer: cleaned, role, fitz: o.fitz ?? null });
     }
   }
 
@@ -328,7 +352,7 @@ Respect the role rules strictly: core=1 word, content=1-2 words, phrase=2-3 word
       const n = normalise(sym);
       if (!n || seen.has(n) || hardBan.has(n)) continue;
       seen.add(n);
-      cards.push({ question: context, answer: n, role: 'content' });
+      cards.push({ question: context, answer: n, role: 'content', fitz: null });
     }
   }
 

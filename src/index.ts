@@ -518,13 +518,14 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
           const q = (c as any).question ?? (c as any).Question;
           const a = (c as any).answer ?? (c as any).Answer;
           const r = (c as any).role ?? 'content';
+          const fitz = (c as any).fitz ?? null;
           if (typeof q === 'string' && typeof a === 'string') {
-            return { question: q, answer: a, role: r };
+            return { question: q, answer: a, role: r, fitz };
           }
         }
         return null;
       })
-      .filter(Boolean) as { question: string; answer: string; role: string }[];
+      .filter(Boolean) as { question: string; answer: string; role: string; fitz: string | null }[];
 
     const originalPromptQuestion = context; // ensure we only store the user prompt
 
@@ -539,7 +540,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         .join(' ');
     }
 
-  let deduped: { question: string; answer: string; role: string }[] = [];
+  let deduped: { question: string; answer: string; role: string; fitz: string | null }[] = [];
     const seenAnswers = new Set<string>();
 
     for (const c of rawCards) {
@@ -550,7 +551,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       deduped.push({
         question: originalPromptQuestion,
         answer,
-        role: 'content'
+        role: (c as any).role ?? 'content',
+        fitz: (c as any).fitz ?? null,
       });
       if (deduped.length >= requestedCount) break;
     }
@@ -596,7 +598,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         if (deduped.length >= requestedCount) break;
         if (seenAnswers.has(w)) continue;
         seenAnswers.add(w);
-        deduped.push({ question: originalPromptQuestion, answer: w, role: 'content' });
+        deduped.push({ question: originalPromptQuestion, answer: w, role: 'content', fitz: null });
       }
     }
 
@@ -730,7 +732,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     keptCards = keptCards.map(c => ({
       question: c.question.length > 80 ? c.question.slice(0,77).trimEnd() + '…' : c.question,
       answer: clampShort(c.answer),
-      role: c.role ?? 'content'
+      role: c.role ?? 'content',
+      fitz: c.fitz ?? null
     }));
     console.log('[POST-CLAMP SHORT]', {
       gen: generationId,
@@ -788,12 +791,13 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     console.log('[flashcards insert ok]', { generationId, inserted: inserted?.length || 0 });
 
     // ✅ Use stored asset_filename from database (already matched during insert)
-    const responseCards = inserted.map((card: any) => ({
+    const responseCards = inserted.map((card: any, i: number) => ({
       id: card.id,
       question: card.question,
       answer: card.answer,
       tags: finalTags,
       asset_filename: card.asset_filename || 'blank.svg', // Use stored value from DB
+      fitz: keptCards[i]?.fitz ?? null,
     }));
 
     // ---------- Tags insert (reuse inserted list) ----------
