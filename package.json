@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "dev": "node --loader ts-node/esm src/index.ts",
     "test:prompts": "node --loader ts-node/esm scripts/testPrompts.ts"
   },
