@@ -1,0 +1,461 @@
+more → “Do you want more?”
+you → “Who is this for, you or me?”
+i → “Who wants to try?”
+help → “Can someone help?”
+want → “What do you want?”
+go → “Where do you want to go?”
+like → “Do you like this?”
+that → “Do you want that?”
+in → “Is it in the box?”
+it → “Do you see it?”
+what → “What happened?”
+make → “What should we make?”
+do → “What do you want to do?”
+here → “Is it here?”
+out → “Can you take it out?”
+play → “Do you want to play?”
+is → “Is this correct?”
+don’t → “Don’t touch it.”
+stop → “Should we stop?”
+on → “Is it on?”
+mine → “Whose is this?”
+where → “Where did it go?”
+to → “Who is it to?”
+not → “Is it not ready?”
+put → “Where should I put it?”
+eat → “What do you want to eat?”
+who → “Who is that?”
+he → “Is he coming?”
+are → “Are you ready?”
+get → “Can you get it?”
+again → “Do it again?”
+for → “What is this for?”
+the → “Show me the one with the”
+this → “Do you want this?”
+and → “Do you want this and that?”
+off → “Turn it off?”
+with → “Who is going with you?”
+she → “Is she here?”
+can → “Can you do it?”
+will → “Will you come?”
+some → “Do you want some?”
+drink → “Do you want a drink?”
+up → “Look up.”
+my → “Is this my bag?”
+a → “Do you want a apple?”
+need → “What do you need?”
+was → “Where was it?”
+look → “Look at this.”
+no → “Is it no?”
+so → “Why are you so quiet?”
+when → “When is it happening?”
+all → “Is this all?”
+over → “Is it over?”
+finished → “Are you finished?”
+turn → “Turn the page.”
+open → “Can you open it?”
+because → “Why because?”
+me → “Is this for me?”
+different → “Is it different?”
+away → “Can you move it away?”
+good → “Is that good?”
+we → “What should we do?”
+be → “How should we be?”
+have → “Do you have it?”
+am → “I am what?”
+how → “How did that happen?”
+but → “Why but?”
+why → “Why is that?”
+they → “Where are they?”
+know → “Do you know?”
+of → “What part of?”
+there → “Is it there?”
+come → “Can you come?”
+did → “Did it happen?”
+tell → “Can you tell me?”
+at → “Who is at the door?”
+down → “Put it down.”
+big → “Is it big?”
+little → “Is it little?”
+could → “Could you try?”
+give → “Can you give it?”
+by → “Stand by me.”
+as → “As what?”
+if → “What if?”
+or → “This or that?”
+dad → “Where is dad?”
+your → “Is this your phone?”
+today → “What are we doing today?”
+going → “Where are we going?”
+find → “Can you find it?”
+say → “Can you say it again?”
+work → “Do you want to work?”
+before → “What happened before?”
+after → “What happens after?”
+time → “What time is it?”
+now → “What are we doing now?”
+very → “Is it very big?”
+him → “Is it for him?”
+please → “Say please.”
+her → “Is this for her?”
+were → “Where were you?”
+any → “Do you have any?”
+about → “What is it about?”
+them → “Give it to them.”
+an → “Do you want an apple?”
+does → “Does it work?”
+one → “Do you want one?”
+yes → “Is that yes?”
+had → “What did you had?”
+see → “Do you see it?”
+think → “What do you think?”
+use → “How do you use it?”
+watch → “Watch this.”
+take → “Can you take it?”
+first → “Who goes first?”
+his → “Is it his?”
+other → “Do you want the other?”
+hey → “Say hey.”
+these → “Do you want these?”
+those → “Do you want those?”
+would → “Would you like it?”
+doing → “What are you doing?”
+has → “Who has it?”
+sit → “Can you sit?”
+show → “Show me.”
+day → “How was your day?”
+next → “What is next?”
+then → “What happens then?”
+made → “Who made it?”
+feel → “How do you feel?”
+two → “Do you want two?”
+way → “Which way?”
+goes → “Where goes it?”
+said → “What did he said?”
+went → “Where did you went?”
+done → “Are you done?”
+let → “Let me try.”
+let's → “Let’s go.”
+name → “What is your name?”
+baby → “Is it a baby?”
+three → “Do you want three?”
+only → “Is this only?”
+than → “Is it bigger than?”
+better → “Is it better?”
+which → “Which one?”
+it's → “Is it ready?”
+bad → “Is it bad?”
+from → “Where is it from?”
+our → “Is it our turn?”
+another → “Do you want another?”
+something → “Do you need something?”
+us → “Is it for us?”
+five → “Do you want five?”
+just → “Just wait.”
+new → “Is it new?”
+found → “What did you found?”
+back → “Go back.”
+write → “Can you write it?”
+okay → “Is it okay?”
+last → “Is this the last?”
+mom → “Where is mom?”
+home → “Go home.”
+house → “Is it at the house?”
+things → “Do you like things?”
+yet → “Are you ready yet?”
+call → “Can you call?”
+hand → “Raise your hand.”
+saw → “What did you saw?”
+almost → “Is it almost done?”
+around → “Look around.”
+else → “Anything else?”
+guys → “Hey guys.”
+myself → “I can do it myself.”
+nice → “Isn’t that nice?”
+many → “How many?”
+maybe → “Maybe later.”
+too → “Me too.”
+green → “Is it green?”
+same → “Is it the same?”
+making → “What are you making?”
+isn't → “Isn’t it working?”
+they're → “Where are they?”
+try → “Do you want to try?”
+got → “What did you got?”
+didn't → “Did it not happen?”
+fall → “Did you fall?”
+move → “Can you move?”
+ball → “Do you want the ball?”
+car → “Is that your car?”
+lunch → “What is for lunch?”
+thing → “What is that thing?”
+less → “Do you want less?”
+aren't → “Aren’t you ready?”
+hands → “Show me your hands.”
+boy → “Is that a boy?”
+girl → “Is that a girl?”
+paint → “Do you want to paint?”
+both → “Do you want both?”
+man → “Is that the man?”
+bathroom → “Do you need the bathroom?”
+hot → “Is it hot?”
+under → “Is it under?”
+every → “Does every one have it?”
+four → “Do you want four?”
+hello → “Say hello.”
+oh → “Say oh.”
+ready → “Are you ready?”
+black → “Is it black?”
+old → “Is it old?”
+trying → “What are you trying?”
+having → “What are you having?”
+doesn't → “Does it not work?”
+that's → “Is that right?”
+there's → “Is there something?”
+what's → “What is it?”
+you're → “You are what?”
+yours → “Is it yours?”
+few → “Do you want a few?”
+blue → “Is it blue?”
+comes → “When comes it?”
+came → “When did it come?”
+ones → “Which ones?”
+leaves → “Do the leaves fall?”
+lot → “Is it a lot?”
+well → “Are you feeling well?”
+people → “Are there people?”
+water → “Do you want water?”
+kind → “What kind?”
+long → “Is it long?”
+fire → “Is there a fire?”
+head → “Does your head hurt?”
+mean → “What do you mean?”
+shoe → “Is that your shoe?”
+happy → “Are you happy?”
+everybody → “Is everybody here?”
+hi → “Say hi.”
+i'll → “I will do it.”
+i'm → “I am ready.”
+question → “Do you have a question?”
+really → “Is that really true?”
+she's → “She is coming?”
+still → “Is it still on?”
+top → “Is it on top?”
+red → “Is it red?”
+their → “Is it their turn?”
+love → “Do you love it?”
+looking → “What are you looking for?”
+wants → “Who wants it?”
+read → “Can you read it?”
+color → “What color is it?”
+cool → “Isn’t that cool?”
+juice → “Do you want juice?”
+middle → “Is it in the middle?”
+bit → “Just a bit?”
+fewer → “Do you want fewer?”
+jump → “Can you jump?”
+buy → “Do you want to buy it?”
+catch → “Can you catch it?”
+cut → “Can you cut it?”
+gone → “Is it gone?”
+hear → “Can you hear it?”
+pick → “Pick one.”
+remember → “Do you remember?”
+ride → “Do you want to ride?”
+run → “Can you run?”
+stay → “Can you stay?”
+talk → “Can you talk?”
+wait → “Can you wait?”
+walk → “Can you walk?”
+wear → “What will you wear?”
+you'll → “You will do it?”
+light → “Is the light on?”
+chair → “Is that a chair?”
+dog → “Do you see the dog?”
+door → “Is the door open?”
+foot → “Does your foot hurt?”
+girls → “Are the girls here?”
+hair → “Is that your hair?”
+hat → “Do you want your hat?”
+room → “Is this your room?”
+sand → “Do you want to play in the sand?”
+white → “Is it white?”
+least → “Who has the least?”
+jumping → “Are you jumping?”
+also → “Do you also want it?”
+gonna → “What are you gonna do?”
+may → “May I try?”
+push → “Can you push it?”
+wake → “Wake up.”
+wash → “Do you want to wash?”
+great → “Isn’t that great?”
+most → “Who has the most?”
+already → “Is it already done?”
+favorite → “What is your favorite?”
+sometimes → “Do you sometimes feel tired?”
+spider → “Do you see the spider?”
+tape → “Do you need tape?”
+while → “Wait a while.”
+fun → “Is it fun?”
+bugs → “Do you see bugs?”
+into → “Put it into the box.”
+together → “Let’s do it together.”
+ours → “Is it ours?”
+eating → “Are you eating?”
+getting → “What are you getting?”
+playing → “Who is playing?”
+ate → “What did you ate?”
+being → “What is being done?”
+threw → “Who threw it?”
+couldn't → “Why couldn't you?”
+must → “Must we go?”
+we'll → “We will go.”
+we're → “We are ready.”
+wanted → “What did you wanted?”
+birds → “Do you see the birds?”
+eggs → “Are those eggs?”
+trees → “Do you see the trees?”
+used → “What was it used for?”
+legs → “Do your legs hurt?”
+clean → “Can you clean it?”
+quick → “Do it quick.”
+brother → “Is that your brother?”
+even → “Is it even?”
+sister → “Is that your sister?”
+fewest → “Who has the fewest?”
+either → “Do you want either?”
+haven't → “Haven't you finished?”
+line → “Stand in line.”
+duck → “Do you see the duck?”
+face → “Is your face clean?”
+farm → “Do you see the farm?”
+fish → “Is that a fish?”
+fly → “Can it fly?”
+hold → “Can you hold it?”
+horse → “Do you see the horse?”
+party → “Is there a party?”
+stand → “Can you stand?”
+train → “Do you see the train?”
+cows → “Do you see the cows?”
+never → “Never do that.”
+shut → “Shut the door.”
+through → “Walk through.”
+toys → “Pick up your toys.”
+everything → “Is everything ready?”
+someone → “Is someone here?”
+orange → “Is it orange?”
+high → “Is it high?”
+yellow → “Is it yellow?”
+none → “Is there none?”
+far → “Is it far?”
+cup → “Do you want a cup?”
+fence → “Is there a fence?”
+lift → “Can you lift it?”
+jumped → “Who jumped?”
+named → “Who named it?”
+half → “Do you want half?”
+story → “Do you want a story?”
+hers → “Is it hers?”
+gets → “Who gets it?”
+somebody → “Is somebody here?”
+ask → “Can you ask?”
+hide → “Can you hide?”
+suppose → “What do you suppose?”
+thank → “Say thank you.”
+wasn't → “Wasn't it working?”
+bed → “Go to bed.”
+bell → “Did you hear the bell?”
+bird → “Do you see a bird?”
+birthday → “Is it your birthday?”
+boat → “Do you see the boat?”
+box → “Is it in the box?”
+cake → “Do you want cake?”
+cat → “Do you see the cat?”
+doctor → “Do you need the doctor?”
+feet → “Do your feet hurt?”
+food → “Do you want food?”
+friend → “Is that your friend?”
+game → “Do you want to play a game?”
+hill → “Is there a hill?”
+hole → “Is there a hole?”
+milk → “Do you want milk?”
+money → “Do you have money?”
+night → “Is it night?”
+piece → “Do you want a piece?”
+real → “Is it real?”
+side → “Which side?”
+table → “Is it on the table?”
+nobody → “Is there nobody?”
+nothing → “Is there nothing?”
+fixed → “Is it fixed?”
+each → “Does each one count?”
+mother → “Is that your mother?”
+bet → “Do you want to bet?”
+bite → “Did it bite?”
+cause → “What is the cause?”
+here's → “Here is it.”
+bean → “Do you want a bean?”
+butter → “Do you want butter?”
+candy → “Do you want candy?”
+cookie → “Do you want a cookie?”
+corn → “Do you want corn?”
+finger → “Did you hurt your finger?”
+glue → “Do you need glue?”
+somewhere → “Is it somewhere?”
+stuff → “What stuff?”
+whatever → “Do whatever you want.”
+negative → “Is the answer negative?”
+sure → “Are you sure?”
+whole → “Is it whole?”
+theirs → “Is it theirs?”
+children → “Are the children here?”
+morning → “Good morning.”
+paper → “Do you need paper?”
+picture → “Do you see the picture?”
+school → “Are you going to school?”
+doghouse → “Is it in the doghouse?”
+father → “Is that your father?”
+ground → “Is it on the ground?”
+whichever → “Choose whichever.”
+square → “Is it a square?”
+leave → “Do you want to leave?”
+positive → “Is the result positive?”
+triangle → “Is it a triangle?”
+angle → “What angle is it?”
+anyone → “Is anyone here?”
+anything → “Do you need anything?”
+everyone → “Is everyone ready?”
+straight → “Is it straight?”
+anybody → “Is anybody there?”
+farmer → “Is he a farmer?”
+bear → “Do you see a bear?”
+bread → “Do you want bread?”
+coat → “Do you want your coat?”
+egg → “Is that an egg?”
+eye → “Do you see with your eye?”
+floor → “Is it on the floor?”
+garden → “Is that a garden?”
+grass → “Is it grass?”
+leg → “Did you hurt your leg?”
+men → “Are those men?”
+pig → “Do you see the pig?”
+rabbit → “Do you see the rabbit?”
+rain → “Is it raining?”
+sheep → “Do you see sheep?”
+snow → “Is it snowing?”
+stick → “Pick up the stick.”
+street → “Is it across the street?”
+sun → “Is the sun out?”
+tree → “Do you see the tree?”
+wind → “Is the wind strong?”
+window → “Is the window open?”
+wood → “Is it made of wood?”
+variable → “What is the variable?”
+parallel → “Are the lines parallel?”
+slope → “What is the slope?”
+rectangle → “Is it a rectangle?”
+symmetry → “Does it have symmetry?”
+halves → “Do you want it in halves?”
+thirds → “Split it in thirds.”
+fourths → “Split it in fourths.”
+tenths → “Split it into tenths.”

@@ -1,0 +1,31 @@
+expected	model_output	avg_latency_ms	expected_match_score	core_vocab_score	persona_alignment	tap_efficiency	regulation_score	drift_rate
+["finish","clean","finish"]	["stop","or","me","watch"]	387	0.00	1.00	1.00	0.75	0.25	0.00
+["find","little","angry","go"]	["again","tell","thank you","next"]	373	0.00	1.00	1.00	1.00	0.00	0.00
+["you","wait","fun"]	["home","again","run","abstract"]	457	0.00	0.75	0.80	0.75	0.25	0.25
+["out","work","their"]	["done","wait","come","done"]	316	0.00	0.50	1.00	0.75	0.50	0.50
+["today","get","clean","run"]	["next","again","your","work"]	301	0.00	1.00	1.00	1.00	0.00	0.00
+["want","get","going","different"]	["drink","very","be","start","make"]	520	0.00	1.00	1.00	0.80	0.00	0.00
+["run","down","show"]	["now","rocket","finish","rocket"]	271	0.00	0.50	0.80	0.75	0.00	0.50
+["drink","first","out","that"]	["it","thank you","hurt","know","done"]	402	0.00	0.80	1.00	0.80	0.20	0.20
+["up","little","fast"]	["start","they","on","did","know"]	498	0.00	1.00	1.00	0.60	0.00	0.00
+["close","i","why"]	["sick","rocket","sit","unicorn"]	364	0.00	0.50	0.80	0.75	0.00	0.50
+["now","next","danger"]	["play","fun","this","stand","empty"]	545	0.00	1.00	1.00	0.60	0.00	0.00
+["tired","fun","after","find"]	["play","busy","show","busy"]	488	0.00	1.00	1.00	1.00	0.00	0.00
+["on","good","sick"]	["please","his","boring","going"]	502	0.00	1.00	1.00	0.75	0.00	0.00
+["thank you","here","their","have"]	["going","ready","am","different","loud"]	505	0.00	1.00	1.00	0.80	0.00	0.00
+["hot","your","i","how"]	["am","tell","give","more","boring"]	528	0.00	1.00	1.00	0.80	0.00	0.00
+["full","slow","find"]	["ready","but","dad","full"]	390	0.33	1.00	1.00	0.75	0.00	0.00
+["finish","good","busy"]	["mine","philosophy","him","fun","have"]	362	0.00	0.80	0.80	0.60	0.00	0.20
+["i","clean","home"]	["did","here","abstract","full"]	387	0.00	0.75	0.80	0.75	0.00	0.25
+["help","last","run"]	["i","after","am","give"]	431	0.00	1.00	1.00	0.75	0.00	0.00
+["thirsty","there","look"]	["get","stop","move","or"]	478	0.00	1.00	1.00	0.75	0.25	0.00
+["fast","down","down","how"]	["down","cold","maybe","tired","why"]	483	0.50	0.80	1.00	0.80	0.00	0.20
+["big","sick","turn","drink"]	["stop","first","make","park"]	513	0.00	1.00	1.00	1.00	0.25	0.00
+["open","on","stand","good"]	["watch","stand","stop","play"]	449	0.25	1.00	1.00	1.00	0.25	0.00
+["yes","good","little","more"]	["i","did","up","small","after"]	439	0.00	1.00	1.00	0.80	0.00	0.00
+["close","as","after"]	["done","leave","big","philosophy"]	422	0.00	0.50	0.80	0.75	0.25	0.50
+["very","we","me"]	["if","i","before","loud","down"]	534	0.00	1.00	1.00	0.60	0.00	0.00
+["our","very","close"]	["next","again","banana","little"]	526	0.00	0.75	1.00	0.75	0.00	0.25
+["was","watch","drink"]	["by","wait","help","no","their"]	417	0.00	1.00	1.00	0.60	0.20	0.00
+["see","there","i","big"]	["work","there","okay","thank you","maybe"]	304	0.25	0.60	1.00	0.80	0.00	0.40
+["our","tired","very","going"]	["ready","they","but","turn"]	471	0.00	1.00	1.00	1.00	0.00	0.00

@@ -1,0 +1,362 @@
+statement	avg_latency_ms	symbol_accuracy	core_coverage	avg_tap_eff
+were → “Where were you?”		100%	100%	1
+any → “Do you have any?”		100%	100%	1
+about → “What is it about?”		100%	50%	1
+them → “Give it to them.”		66.67%	66.67%	1
+an → “Do you want an apple?”		83.33%	83.33%	1
+does → “Does it work?”		83.33%	66.67%	1
+one → “Do you want one?”		100%	100%	1
+yes → “Is that yes?”		100%	20%	1
+had → “What did you had?”		100%	16.67%	1
+see → “Do you see it?”		83.33%	66.67%	1
+think → “What do you think?”		100%	50%	1
+use → “How do you use it?”		100%	50%	1
+watch → “Watch this.”		100%	100%	1
+take → “Can you take it?”		100%	83.33%	1
+first → “Who goes first?”		100%	100%	1
+his → “Is it his?”		80%	80%	1
+other → “Do you want the other?”		100%	100%	1
+hey → “Say hey.”		80%	0%	1
+these → “Do you want these?”		100%	100%	1
+those → “Do you want those?”		100%	83.33%	1
+would → “Would you like it?”		100%	83.33%	1
+doing → “What are you doing?”		100%	0%	1
+has → “Who has it?”		83.33%	66.67%	1
+sit → “Can you sit?”		100%	80%	1
+show → “Show me.”		100%	100%	1
+day → “How was your day?”		100%	16.67%	1
+next → “What is next?”		100%	83.33%	1
+then → “What happens then?”		83.33%	83.33%	1
+made → “Who made it?”		80%	20%	1
+feel → “How do you feel?”		100%	50%	1
+two → “Do you want two?”		100%	83.33%	1
+way → “Which way?”		100%	33.33%	1
+goes → “Where goes it?”		80%	40%	1
+said → “What did he said?”		66.67%	16.67%	1
+went → “Where did you went?”		50%	16.67%	1
+done → “Are you done?”		100%	50%	1
+let → “Let me try.”		100%	60%	1
+let's → “Let’s go.”		100%	66.67%	1
+name → “What is your name?”		50%	16.67%	1
+baby → “Is it a baby?”		100%	66.67%	1
+three → “Do you want three?”		100%	80%	1
+only → “Is this only?”		100%	100%	1
+than → “Is it bigger than?”		50%	50%	1
+better → “Is it better?”		100%	50%	1
+which → “Which one?”		40%	40%	1
+it's → “Is it ready?”		83.33%	83.33%	1
+bad → “Is it bad?”		100%	80%	1
+from → “Where is it from?”		100%	50%	1
+our → “Is it our turn?”		83.33%	83.33%	1
+another → “Do you want another?”		100%	100%	1
+something → “Do you need something?”		83.33%	66.67%	1
+us → “Is it for us?”		66.67%	50%	1
+five → “Do you want five?”		100%	83.33%	1
+just → “Just wait.”		100%	100%	1
+new → “Is it new?”		66.67%	50%	1
+found → “What did you found?”		66.67%	50%	1
+back → “Go back.”		100%	83.33%	1
+write → “Can you write it?”		83.33%	66.67%	1
+okay → “Is it okay?”		100%	66.67%	1
+last → “Is this the last?”		100%	100%	1
+mom → “Where is mom?”		60%	60%	1
+home → “Go home.”		100%	100%	1
+house → “Is it at the house?”		100%	100%	1
+things → “Do you like things?”		50%	50%	1
+yet → “Are you ready yet?”		80%	60%	1
+call → “Can you call?”		100%	83.33%	1
+hand → “Raise your hand.”		60%	60%	1
+saw → “What did you saw?”		16.67%	0%	1
+almost → “Is it almost done?”		66.67%	50%	1
+around → “Look around.”		100%	66.67%	1
+else → “Anything else?”		100%	100%	1
+guys → “Hey guys.”		40%	0%	1
+myself → “I can do it myself.”		20%	20%	1
+nice → “Isn’t that nice?”		66.67%	33.33%	1
+many → “How many?”		33.33%	16.67%	1
+maybe → “Maybe later.”		100%	40%	1
+too → “Me too.”		40%	40%	1
+green → “Is it green?”		66.67%	50%	1
+same → “Is it the same?”		60%	40%	1
+making → “What are you making?”		50%	16.67%	1
+isn't → “Isn’t it working?”		100%	66.67%	1
+they're → “Where are they?”		83.33%	50%	1
+try → “Do you want to try?”		100%	100%	1
+got → “What did you got?”		50%	16.67%	1
+didn't → “Did it not happen?”		80%	40%	1
+fall → “Did you fall?”		100%	66.67%	1
+move → “Can you move?”		100%	100%	1
+ball → “Do you want the ball?”		100%	100%	1
+car → “Is that your car?”		100%	50%	1
+lunch → “What is for lunch?”		16.67%	16.67%	1
+thing → “What is that thing?”		66.67%	33.33%	1
+less → “Do you want less?”		80%	80%	1
+aren't → “Aren’t you ready?”		100%	83.33%	1
+hands → “Show me your hands.”		66.67%	50%	1
+boy → “Is that a boy?”		83.33%	50%	1
+girl → “Is that a girl?”		66.67%	50%	1
+paint → “Do you want to paint?”		83.33%	83.33%	1
+both → “Do you want both?”		83.33%	83.33%	1
+man → “Is that the man?”		83.33%	50%	1
+bathroom → “Do you need the bathroom?”		100%	100%	1
+hot → “Is it hot?”		50%	50%	1
+under → “Is it under?”		83.33%	83.33%	1
+every → “Does every one have it?”		50%	50%	1
+four → “Do you want four?”		100%	80%	1
+hello → “Say hello.”		40%	0%	1
+oh → “Say oh.”		80%	80%	1
+ready → “Are you ready?”		100%	83.33%	1
+black → “Is it black?”		66.67%	50%	1
+old → “Is it old?”		50%	33.33%	1
+trying → “What are you trying?”		33.33%	33.33%	1
+having → “What are you having?”		100%	50%	1
+doesn't → “Does it not work?”		83.33%	66.67%	1
+that's → “Is that right?”		66.67%	33.33%	1
+there's → “Is there something?”		83.33%	83.33%	1
+what's → “What is it?”		100%	50%	1
+you're → “You are what?”		100%	83.33%	1
+yours → “Is it yours?”		100%	83.33%	1
+few → “Do you want a few?”		83.33%	83.33%	1
+blue → “Is it blue?”		66.67%	50%	1
+comes → “When comes it?”		80%	40%	1
+came → “When did it come?”		100%	40%	1
+ones → “Which ones?”		16.67%	16.67%	1
+leaves → “Do the leaves fall?”		33.33%	33.33%	1
+lot → “Is it a lot?”		60%	60%	1
+well → “Are you feeling well?”		100%	33.33%	1
+people → “Are there people?”		40%	40%	1
+water → “Do you want water?”		100%	100%	1
+kind → “What kind?”		33.33%	33.33%	1
+long → “Is it long?”		66.67%	50%	1
+fire → “Is there a fire?”		100%	66.67%	1
+head → “Does your head hurt?”		83.33%	83.33%	1
+mean → “What do you mean?”		33.33%	0%	1
+shoe → “Is that your shoe?”		100%	66.67%	1
+happy → “Are you happy?”		50%	33.33%	1
+everybody → “Is everybody here?”		66.67%	50%	1
+hi → “Say hi.”		66.67%	0%	1
+i'll → “I will do it.”		50%	33.33%	1
+i'm → “I am ready.”		66.67%	50%	1
+question → “Do you have a question?”		100%	66.67%	1
+really → “Is that really true?”		66.67%	33.33%	1
+she's → “She is coming?”		83.33%	50%	1
+still → “Is it still on?”		80%	40%	1
+top → “Is it on top?”		66.67%	66.67%	1
+red → “Is it red?”		60%	40%	1
+their → “Is it their turn?”		83.33%	83.33%	1
+love → “Do you love it?”		83.33%	83.33%	1
+looking → “What are you looking for?”		50%	33.33%	1
+wants → “Who wants it?”		83.33%	83.33%	1
+read → “Can you read it?”		83.33%	83.33%	1
+color → “What color is it?”		0%	0%	1
+cool → “Isn’t that cool?”		60%	40%	1
+juice → “Do you want juice?”		100%	100%	1
+middle → “Is it in the middle?”		83.33%	83.33%	1
+bit → “Just a bit?”		50%	50%	1
+fewer → “Do you want fewer?”		100%	100%	1
+jump → “Can you jump?”		100%	83.33%	1
+buy → “Do you want to buy it?”		83.33%	83.33%	1
+catch → “Can you catch it?”		83.33%	66.67%	1
+cut → “Can you cut it?”		66.67%	66.67%	1
+gone → “Is it gone?”		83.33%	66.67%	1
+hear → “Can you hear it?”		83.33%	66.67%	1
+pick → “Pick one.”		83.33%	83.33%	1
+remember → “Do you remember?”		60%	40%	1
+ride → “Do you want to ride?”		100%	100%	1
+run → “Can you run?”		100%	83.33%	1
+stay → “Can you stay?”		83.33%	83.33%	1
+talk → “Can you talk?”		100%	83.33%	1
+wait → “Can you wait?”		83.33%	66.67%	1
+walk → “Can you walk?”		100%	83.33%	1
+wear → “What will you wear?”		0%	0%	1
+you'll → “You will do it?”		50%	33.33%	1
+light → “Is the light on?”		83.33%	50%	1
+chair → “Is that a chair?”		50%	33.33%	1
+dog → “Do you see the dog?”		83.33%	66.67%	1
+door → “Is the door open?”		83.33%	83.33%	1
+foot → “Does your foot hurt?”		83.33%	66.67%	1
+girls → “Are the girls here?”		100%	50%	1
+hair → “Is that your hair?”		66.67%	50%	1
+hat → “Do you want your hat?”		66.67%	66.67%	1
+room → “Is this your room?”		83.33%	66.67%	1
+sand → “Do you want to play in the sand?”		100%	100%	1
+white → “Is it white?”		66.67%	50%	1
+least → “Who has the least?”		33.33%	16.67%	1
+jumping → “Are you jumping?”		100%	100%	1
+also → “Do you also want it?”		83.33%	83.33%	1
+gonna → “What are you gonna do?”		83.33%	83.33%	1
+may → “May I try?”		100%	83.33%	1
+push → “Can you push it?”		83.33%	83.33%	1
+wake → “Wake up.”		60%	40%	1
+wash → “Do you want to wash?”		100%	100%	1
+great → “Isn’t that great?”		50%	33.33%	1
+most → “Who has the most?”		33.33%	16.67%	1
+already → “Is it already done?”		50%	33.33%	1
+favorite → “What is your favorite?”		16.67%	0%	1
+sometimes → “Do you sometimes feel tired?”		50%	50%	1
+spider → “Do you see the spider?”		100%	83.33%	1
+tape → “Do you need tape?”		83.33%	83.33%	1
+while → “Wait a while.”		60%	60%	1
+fun → “Is it fun?”		83.33%	50%	1
+bugs → “Do you see bugs?”		100%	100%	1
+into → “Put it into the box.”		50%	33.33%	1
+together → “Let’s do it together.”		83.33%	50%	1
+ours → “Is it ours?”		66.67%	66.67%	1
+eating → “Are you eating?”		100%	50%	1
+getting → “What are you getting?”		83.33%	50%	1
+playing → “Who is playing?”		33.33%	33.33%	1
+ate → “What did you ate?”		83.33%	0%	1
+being → “What is being done?”		100%	100%	1
+threw → “Who threw it?”		100%	66.67%	1
+couldn't → “Why couldn't you?”		83.33%	50%	1
+must → “Must we go?”		100%	100%	1
+we'll → “We will go.”		60%	20%	1
+we're → “We are ready.”		66.67%	50%	1
+wanted → “What did you wanted?”		83.33%	66.67%	1
+birds → “Do you see the birds?”		66.67%	66.67%	1
+eggs → “Are those eggs?”		66.67%	50%	1
+trees → “Do you see the trees?”		66.67%	66.67%	1
+used → “What was it used for?”		80%	20%	1
+legs → “Do your legs hurt?”		100%	83.33%	1
+clean → “Can you clean it?”		83.33%	83.33%	1
+quick → “Do it quick.”		50%	50%	1
+brother → “Is that your brother?”		33.33%	33.33%	1
+even → “Is it even?”		50%	33.33%	1
+sister → “Is that your sister?”		50%	50%	1
+fewest → “Who has the fewest?”		33.33%	16.67%	1
+either → “Do you want either?”		83.33%	83.33%	1
+haven't → “Haven't you finished?”		83.33%	50%	1
+line → “Stand in line.”		83.33%	66.67%	1
+duck → “Do you see the duck?”		83.33%	66.67%	1
+face → “Is your face clean?”		83.33%	83.33%	1
+farm → “Do you see the farm?”		50%	50%	1
+fish → “Is that a fish?”		83.33%	66.67%	1
+fly → “Can it fly?”		100%	66.67%	1
+hold → “Can you hold it?”		83.33%	83.33%	1
+horse → “Do you see the horse?”		83.33%	83.33%	1
+party → “Is there a party?”		83.33%	66.67%	1
+stand → “Can you stand?”		100%	66.67%	1
+train → “Do you see the train?”		83.33%	83.33%	1
+cows → “Do you see the cows?”		66.67%	66.67%	1
+never → “Never do that.”		60%	60%	1
+shut → “Shut the door.”		60%	60%	1
+through → “Walk through.”		100%	100%	1
+toys → “Pick up your toys.”		66.67%	50%	1
+everything → “Is everything ready?”		100%	83.33%	1
+someone → “Is someone here?”		100%	83.33%	1
+orange → “Is it orange?”		60%	40%	1
+high → “Is it high?”		50%	33.33%	1
+yellow → “Is it yellow?”		50%	33.33%	1
+none → “Is there none?”		80%	80%	1
+far → “Is it far?”		83.33%	83.33%	1
+cup → “Do you want a cup?”		66.67%	66.67%	1
+fence → “Is there a fence?”		83.33%	66.67%	1
+lift → “Can you lift it?”		100%	83.33%	1
+jumped → “Who jumped?”		16.67%	0%	1
+named → “Who named it?”		83.33%	33.33%	1
+half → “Do you want half?”		83.33%	83.33%	1
+story → “Do you want a story?”		100%	83.33%	1
+hers → “Is it hers?”		60%	60%	1
+gets → “Who gets it?”		100%	80%	1
+somebody → “Is somebody here?”		100%	83.33%	1
+ask → “Can you ask?”		66.67%	66.67%	1
+hide → “Can you hide?”		100%	100%	1
+suppose → “What do you suppose?”		83.33%	33.33%	1
+thank → “Say thank you.”		20%	20%	1
+wasn't → “Wasn't it working?”		100%	66.67%	1
+bed → “Go to bed.”		40%	40%	1
+bell → “Did you hear the bell?”		66.67%	50%	1
+bird → “Do you see a bird?”		83.33%	66.67%	1
+birthday → “Is it your birthday?”		33.33%	33.33%	1
+boat → “Do you see the boat?”		83.33%	83.33%	1
+box → “Is it in the box?”		83.33%	83.33%	1
+cake → “Do you want cake?”		100%	100%	1
+cat → “Do you see the cat?”		83.33%	66.67%	1
+doctor → “Do you need the doctor?”		100%	100%	1
+feet → “Do your feet hurt?”		66.67%	66.67%	1
+food → “Do you want food?”		100%	83.33%	1
+friend → “Is that your friend?”		83.33%	50%	1
+game → “Do you want to play a game?”		100%	83.33%	1
+hill → “Is there a hill?”		50%	50%	1
+hole → “Is there a hole?”		83.33%	66.67%	1
+milk → “Do you want milk?”		100%	100%	1
+money → “Do you have money?”		100%	100%	1
+night → “Is it night?”		33.33%	33.33%	1
+piece → “Do you want a piece?”		100%	100%	1
+real → “Is it real?”		60%	40%	1
+side → “Which side?”		66.67%	33.33%	1
+table → “Is it on the table?”		100%	66.67%	1
+nobody → “Is there nobody?”		100%	100%	1
+nothing → “Is there nothing?”		100%	83.33%	1
+fixed → “Is it fixed?”		83.33%	50%	1
+each → “Does each one count?”		66.67%	66.67%	1
+mother → “Is that your mother?”		33.33%	33.33%	1
+bet → “Do you want to bet?”		100%	33.33%	1
+bite → “Did it bite?”		83.33%	83.33%	1
+cause → “What is the cause?”		16.67%	0%	1
+here's → “Here is it.”		80%	80%	1
+bean → “Do you want a bean?”		100%	100%	1
+butter → “Do you want butter?”		100%	83.33%	1
+candy → “Do you want candy?”		100%	100%	1
+cookie → “Do you want a cookie?”		100%	83.33%	1
+corn → “Do you want corn?”		100%	83.33%	1
+finger → “Did you hurt your finger?”		83.33%	66.67%	1
+glue → “Do you need glue?”		83.33%	83.33%	1
+somewhere → “Is it somewhere?”		83.33%	66.67%	1
+stuff → “What stuff?”		100%	83.33%	1
+whatever → “Do whatever you want.”		66.67%	66.67%	1
+negative → “Is the answer negative?”		100%	80%	1
+sure → “Are you sure?”		66.67%	33.33%	1
+whole → “Is it whole?”		80%	60%	1
+theirs → “Is it theirs?”		66.67%	66.67%	1
+children → “Are the children here?”		66.67%	50%	1
+morning → “Good morning.”		83.33%	16.67%	1
+paper → “Do you need paper?”		100%	100%	1
+picture → “Do you see the picture?”		66.67%	66.67%	1
+school → “Are you going to school?”		66.67%	50%	1
+doghouse → “Is it in the doghouse?”		83.33%	66.67%	1
+father → “Is that your father?”		33.33%	33.33%	1
+ground → “Is it on the ground?”		83.33%	83.33%	1
+whichever → “Choose whichever.”		40%	40%	1
+square → “Is it a square?”		83.33%	50%	1
+leave → “Do you want to leave?”		83.33%	83.33%	1
+positive → “Is the result positive?”		100%	33.33%	1
+triangle → “Is it a triangle?”		83.33%	50%	1
+angle → “What angle is it?”		40%	0%	1
+anyone → “Is anyone here?”		100%	100%	1
+anything → “Do you need anything?”		83.33%	66.67%	1
+everyone → “Is everyone ready?”		83.33%	66.67%	1
+straight → “Is it straight?”		66.67%	33.33%	1
+anybody → “Is anybody there?”		100%	83.33%	1
+farmer → “Is he a farmer?”		50%	33.33%	1
+bear → “Do you see a bear?”		83.33%	66.67%	1
+bread → “Do you want bread?”		100%	100%	1
+coat → “Do you want your coat?”		100%	100%	1
+egg → “Is that an egg?”		50%	33.33%	1
+eye → “Do you see with your eye?”		83.33%	83.33%	1
+floor → “Is it on the floor?”		66.67%	66.67%	1
+garden → “Is that a garden?”		50%	50%	1
+grass → “Is it grass?”		50%	33.33%	1
+leg → “Did you hurt your leg?”		83.33%	66.67%	1
+men → “Are those men?”		66.67%	50%	1
+pig → “Do you see the pig?”		83.33%	66.67%	1
+rabbit → “Do you see the rabbit?”		100%	83.33%	1
+rain → “Is it raining?”		66.67%	50%	1
+sheep → “Do you see sheep?”		66.67%	66.67%	1
+snow → “Is it snowing?”		83.33%	83.33%	1
+stick → “Pick up the stick.”		33.33%	0%	1
+street → “Is it across the street?”		100%	100%	1
+sun → “Is the sun out?”		50%	50%	1
+tree → “Do you see the tree?”		83.33%	83.33%	1
+wind → “Is the wind strong?”		33.33%	33.33%	1
+window → “Is the window open?”		66.67%	66.67%	1
+wood → “Is it made of wood?”		83.33%	50%	1
+variable → “What is the variable?”		50%	33.33%	1
+parallel → “Are the lines parallel?”		83.33%	50%	1
+slope → “What is the slope?”		20%	20%	1
+rectangle → “Is it a rectangle?”		50%	33.33%	1
+symmetry → “Does it have symmetry?”		50%	33.33%	1
+halves → “Do you want it in halves?”		100%	80%	1
+thirds → “Split it in thirds.”		66.67%	66.67%	1
+fourths → “Split it in fourths.”		66.67%	66.67%	1
+tenths → “Split it into tenths.”		50%	50%	1

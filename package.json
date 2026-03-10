@@ -6,10 +6,12 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "node --loader ts-node/esm src/index.ts"
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "test:prompts": "node --loader ts-node/esm scripts/testPrompts.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
+    "@types/papaparse": "^5.5.2",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",
     "dotenv": "^16.6.1",
