@@ -467,9 +467,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const softDeprioritize: string[] = [];
 
     // Decide whether to prefer symbol vocabulary for this prompt.
-    // We prefer symbols for need/food contexts and emotion contexts, but do
-    // NOT strictly force only symbol returns — preferSymbols keeps context
-    // sensitivity while suggesting relevant symbol words to the model.
+    // We prefer symbols for need/food contexts and emotion contexts, but now split by type
     const needContextRegex = /\b(eat|eating|hungry|food|breakfast|lunch|dinner|snack|pancake|cereal|sandwich|pizza|drink|thirsty)\b/i;
     const emotionContextRegex = /\b(how are you|how r you|how are u|how r u|how you|how's it going|how is it going|how do you feel)\b/i;
     const hasFoodTag = incomingTags.includes('food');
@@ -477,42 +475,27 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     const preferFood = hasFoodTag || needContextRegex.test(context);
     const preferEmotions = hasFeelingTag || emotionContextRegex.test(context);
-    // preferSymbols kept for backward compat but now split by type
     const preferSymbols = preferFood || preferEmotions;
 
     // Small rule-based handler for conversational 'how are you' prompts.
-    const howAreYouRegex = /\b(?:how\s+are\s+(you|u)|how\s+r\s+you|how\s+do\s+you\s+feel|how\s+are\s+you\s+feeling)\b/i;
-    if (context.length <= 80 && howAreYouRegex.test(context)) {
-      console.log('[RULE RESPOND] using rule-based responses for how-are-you');
-      const canned = ['happy','fine','tired','sad','excited','calm','worried','okay'];
-      const cards = canned.slice(0, requestedCount).map(a => ({ question: context, answer: a }));
-      const rawContent = '[rule-based responses]';
-      const modelUsed = 'rule-based';
-      // continue processing with these cards by injecting them below
-      // assign to a temporary holder and skip model call
-      var __RULE_CARDS = { cards, rawContent, modelUsed } as any;
-    }
-
-    // If we have rule-based output, use it; otherwise call the generator
+    // Rule-based handler removed; always use generateFlashcards
     let genResult: any;
-    if (typeof __RULE_CARDS !== 'undefined' && __RULE_CARDS) {
-      genResult = __RULE_CARDS;
-    } else {
+    {
       const { cards, rawContent, modelUsed } = await generateFlashcards(
-      enhancedContext, // ✅ Use enhanced context with tags
-      requestedCount,
-      requestedCount,
-      promptVersion,
-      answerLength,
-      null,
-      {
-        relatedPrompts,
-        previousAnswers,
-        hardBan,
-        softDeprioritize,
-        preferSymbols,
-      },
-      AVAILABLE_SYMBOLS
+        enhancedContext,
+        requestedCount,
+        requestedCount,
+        promptVersion,
+        answerLength,
+        null,
+        {
+          relatedPrompts,
+          previousAnswers,
+          hardBan,
+          softDeprioritize,
+          preferSymbols,
+        },
+        AVAILABLE_SYMBOLS
       );
       genResult = { cards, rawContent, modelUsed };
     }
@@ -589,24 +572,25 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     // Fallback fill if short
     if (deduped.length < requestedCount) {
-      // Pick fallback pool based on WHAT TYPE of context we're in
+      // Always include sentence builders, then pick topic words based on context
       const foodFallback = [
         'pancakes','cake','sandwich','pizza','salad','soup','pasta',
-        'fruit','apple','bread','cereal','burger','cookies','rice','noodles','eggs'
+        'fruit','apple','bread','cereal','burger','rice','eggs','water'
       ];
       const emotionFallback = [
         'happy','sad','angry','calm','worried','excited','tired',
-        'fine','good','okay','scared','confused','proud','lonely','bored'
+        'fine','good','okay','scared','confused','sick','better','worse'
       ];
-      const genericFallback = [
-        'help','more','stop','yes','no','rest','hungry','thirsty','please','done'
+      const sentenceFallback = [
+        'i','am','feel','my','is','not','want','need','have','more','done','help','stop','yes','no'
       ];
 
+      // Always include sentence builders, then pick topic words based on context
       const pool = preferFood
-        ? foodFallback.concat(genericFallback).concat(emotionFallback)
+        ? sentenceFallback.concat(foodFallback).concat(emotionFallback)
         : preferEmotions
-          ? emotionFallback.concat(genericFallback).concat(foodFallback)
-          : genericFallback.concat(emotionFallback).concat(foodFallback);
+          ? sentenceFallback.concat(emotionFallback).concat(foodFallback)
+          : sentenceFallback.concat(emotionFallback).concat(foodFallback);
       console.log('[FALLBACK POOL]', { gen: generationId, preferSymbols, poolSample: pool.slice(0,6) });
       for (const w of pool) {
         if (deduped.length >= requestedCount) break;
@@ -1944,8 +1928,19 @@ function matchSymbolFilename(answer: string, availableSymbols: string[]): string
       console.log('[TOKEN MAP CHOICE]', { answer, matched: tokenList[0] });
       return tokenList[0];
     }
-    // If single short token (<4 chars) and no token-map hit, avoid fuzzy/contains match to prevent false positives
+    // For short words, try synonym map before giving up
     if (normalized.length < 4) {
+      const shortSyn = synonymMap[normalized];
+      if (shortSyn) {
+        const shortMatch = availableSymbols.find(s =>
+          s.toLowerCase() === `${shortSyn}.svg` ||
+          s.toLowerCase().startsWith(`${shortSyn}_`)
+        );
+        if (shortMatch) {
+          console.log('[SHORT SYNONYM MATCH]', { answer, synonym: shortSyn, matched: shortMatch });
+          return shortMatch;
+        }
+      }
       console.log('[SHORT SINGLE TOKEN - NO MATCH]', { answer, normalized });
       return 'blank.svg';
     }
