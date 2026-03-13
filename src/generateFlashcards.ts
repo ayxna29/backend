@@ -89,16 +89,19 @@ function cleanAnswer(raw: string, hardBan: Set<string>): string | null {
 
   const words = a.split(' ').filter(Boolean);
 
-  // Single words only
-  if (words.length > 1) return null;
+  // Allow up to 2 words (for phrases like "ice cream", "all done", "thank you")
+  if (words.length > 2) return null;
 
   const filtered = words.filter(w => !ALWAYS_STRIP.has(w));
   if (filtered.length === 0) return null;
-  a = filtered[0];
+
+  // Rejoin (handles both 1 and 2 word answers)
+  a = filtered.join(' ');
 
   if (hardBan.has(a)) return null;
 
-  if (!/^[a-z']{1,40}$/.test(a)) return null;
+  // Allow letters, apostrophes, spaces (for 2-word phrases)
+  if (!/^[a-z' ]{1,40}$/.test(a)) return null;
 
   return a;
 }
@@ -124,9 +127,8 @@ export async function generateFlashcards(
       .slice(0, 40)
   );
 
-  // 70% context words, 30% sentence builders
-  // For 30 cards: ~21 topic words covering the situation broadly + ~9 glue words
-  const contentCount = Math.max(2, Math.round(requestedCount * 0.70));
+  // 65% context words, 35% sentence builders
+  const contentCount = Math.max(2, Math.round(requestedCount * 0.65));
   const coreCount = requestedCount - contentCount;
 
   const hardBanLine = Array.from(hardBan).length > 0
@@ -142,51 +144,53 @@ export async function generateFlashcards(
     ``,
     `SITUATION: "${context}"`,
     ``,
-    `STEP 1 - Imagine 6 different things this person might want to say. Do NOT output them.`,
-    `Think broadly - different needs, emotions, and responses all related to the situation.`,
+    `STEP 1 - Think of 6 DIFFERENT things this person might want to say in this situation.`,
+    `Make them varied — different emotions, needs, responses, not all the same type.`,
+    `Do NOT output these sentences.`,
     ``,
-    `STEP 2 - Extract SINGLE WORDS only. Never put 2 or 3 words on one card.`,
+    `STEP 2 - Generate the cards below.`,
     ``,
-    `SECTION A - CONTEXT WORDS (generate exactly ${contentCount})`,
-    `Single words directly relevant to this situation. Cover the full range of what someone might want to express.`,
-    `Order them: most immediately useful and specific first, broader/secondary words later.`,
-    `Use ALL ${contentCount} slots - go deep into the topic, don't repeat, don't pad with generic words.`,
+    `SECTION A — CONTEXT WORDS (exactly ${contentCount} cards)`,
+    `Words directly relevant to this specific situation.`,
+    `CRITICAL DIVERSITY RULE: spread across multiple categories. Do NOT generate more than`,
+    `2-3 words from the same Fitzgerald category. For example if the situation is about feelings,`,
+    `pick 2-3 feeling descriptors max, then move on to relevant nouns, verbs, social words etc.`,
+    `Think: what variety of words would help someone respond fully to this situation?`,
     ``,
-    `SECTION B - SENTENCE BUILDERS (generate exactly ${coreCount})`,
-    `From the 6 sentences you imagined, extract the glue words that hold them together.`,
-    `Infer what's needed - pronouns, verbs, linking words. Every situation needs different builders.`,
+    `SECTION B — SENTENCE BUILDERS (exactly ${coreCount} cards)`,
+    `Core grammar words needed to form sentences about this situation.`,
+    `Pick the ones most likely needed — don't just dump all pronouns.`,
+    `Infer what's actually needed from the 6 sentences you imagined.`,
+    ``,
+    `MULTI-WORD EXCEPTION: common fixed phrases are allowed as a single card:`,
+    `"ice cream", "all done", "thank you", "good morning", "play area"`,
+    `These must be natural compound concepts, not random word combos.`,
     ``,
     `RULES:`,
-    `- Every answer = exactly 1 word, lowercase, no punctuation`,
-    `- Never output meta-words: answer, question, topic, sentence, response, example, word`,
+    `- Answers: 1 word (or 1 fixed compound phrase max 2 words), lowercase`,
+    `- No punctuation except spaces in 2-word phrases`,
     `- No duplicates`,
+    `- No meta-words: answer, question, topic, sentence, response, example, word`,
+    `- No irrelevant generic padding — every word must earn its place`,
     hardBanLine,
     prevLine,
     ``,
-    `FITZGERALD KEY - add "fitz" to every card:`,
+    `FITZGERALD KEY — add "fitz" field to every card:`,
     `  "person"     -> i, you, he, she, we, they, me, my, mom, dad, friend`,
-    `  "verb"       -> actions/states: hurt, feel, am, is, want, need, go, eat, help, do, have`,
+    `  "verb"       -> actions/states: am, is, feel, want, need, go, eat, help, do, have, hurt`,
     `  "descriptor" -> adjectives/feelings: good, bad, happy, sad, tired, sick, sore, better, hot, cold`,
-    `  "noun"       -> things/places/body parts: head, home, food, school, arm, stomach, water`,
-    `  "social"     -> yes, no, please, more, stop, done, help, again, wait, sorry`,
+    `  "noun"       -> things/places/body parts: home, food, school, water, head, stomach`,
+    `  "social"     -> yes, no, please, more, stop, done, help, again, wait, sorry, thank you`,
     `  "question"   -> what, where, when, why, who, how`,
     ``,
-    `OUTPUT - return ONLY valid JSON, no markdown:`,
-    `{`,
-    `  "cards": [`,
-    `    {"question": "${context}", "answer": "head", "fitz": "noun"},`,
-    `    {"question": "${context}", "answer": "stomach", "fitz": "noun"},`,
-    `    {"question": "${context}", "answer": "hurts", "fitz": "verb"},`,
-    `    {"question": "${context}", "answer": "i", "fitz": "person"},`,
-    `    {"question": "${context}", "answer": "my", "fitz": "person"}`,
-    `  ]`,
-    `}`,
+    `OUTPUT — return ONLY valid JSON, no markdown, no explanation:`,
+    `{"cards": [{"question": "...", "answer": "...", "fitz": "..."}]}`,
     ``,
-    `Generate exactly ${requestedCount} cards. Section A first (context words), Section B last (sentence builders).`,
+    `Generate exactly ${requestedCount} cards. Section A first, Section B last.`,
   ].filter(l => l !== null && l !== undefined).join('\n');
 
   const modelUsed = process.env.FAST_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o-mini';
-  const temperature = Number(process.env.GEN_TEMPERATURE ?? 0.15);
+  const temperature = Number(process.env.GEN_TEMPERATURE ?? 0.25);
   const openai = getOpenAI();
 
   const completion = await openai.chat.completions.create({
@@ -199,8 +203,9 @@ export async function generateFlashcards(
         content: [
           'You are an AAC communication assistant.',
           'Output ONLY the JSON object specified. No preamble, no explanation, no markdown.',
-          'Every "answer" must be a single word a non-speaking person would tap to communicate.',
-          'NEVER combine multiple words into one answer. Each card = exactly one word.',
+          'Every "answer" must be a word or short fixed phrase a non-speaking person would tap.',
+          'DIVERSITY IS CRITICAL: never generate more than 2-3 cards from the same Fitzgerald category.',
+          'For "how are you" do NOT generate 8 emotion words — pick 2 emotions max, then vary.',
         ].join('\n'),
       },
       { role: 'user', content: prompt }
@@ -219,6 +224,10 @@ export async function generateFlashcards(
 
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
 
+  // Track per-category counts to enforce diversity
+  const fitzCounts = new Map<string, number>();
+  const MAX_PER_FITZ = Math.max(3, Math.ceil(requestedCount * 0.25)); // max 25% from one category
+
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
 
@@ -227,13 +236,20 @@ export async function generateFlashcards(
     const cleaned = cleanAnswer(o.answer, hardBan);
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
+
+    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+
+    // Enforce diversity — skip if category is full
+    const currentCount = fitzCounts.get(fitz) || 0;
+    if (currentCount >= MAX_PER_FITZ) continue;
+
     seen.add(cleaned);
-    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
+    fitzCounts.set(fitz, currentCount + 1);
     cards.push({ question: context, answer: cleaned, fitz });
     if (cards.length >= requestedCount) break;
   }
 
-  // Second pass if under count
+  // Second pass ignoring diversity limit if we're still short
   if (cards.length < requestedCount) {
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
@@ -241,7 +257,7 @@ export async function generateFlashcards(
       const cleaned = cleanAnswer(o.answer, hardBan);
       if (!cleaned || seen.has(cleaned)) continue;
       seen.add(cleaned);
-      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
+      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
       cards.push({ question: context, answer: cleaned, fitz });
     }
   }
@@ -252,6 +268,7 @@ export async function generateFlashcards(
     requested: requestedCount,
     produced: cards.length,
     model: modelUsed,
+    fitzDist: Object.fromEntries(fitzCounts),
     sample: cards.slice(0, 6).map(c => `${c.answer}(${c.fitz})`),
   });
 
