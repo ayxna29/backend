@@ -290,7 +290,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       try {
         const contextHash = sha256Base64(context);
         const supabase = getSupabase();
-        const sinceIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const sinceIso = new Date(Date.now() - 1000).toISOString(); // cache disabled - always regenerate
         
         const { error: ensureErr } = await supabase
           .from('flashcard_generations')
@@ -517,16 +517,19 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     }
 
     if (deduped.length < requestedCount) {
-      const foodFallback = ['pancakes','cake','sandwich','pizza','salad','soup','pasta','fruit','apple','bread','cereal','burger','rice','eggs','water'];
-      const emotionFallback = ['happy','sad','angry','calm','worried','excited','tired','fine','good','okay','scared','confused','sick','better','worse'];
-      const sentenceFallback = ['i','am','feel','my','is','not','want','need','have','more','done','help','stop','yes','no'];
+      // Context-aware fallback — only add words if genuinely short, prioritize sentence builders
+      // Never pad with random nouns like home/school/food unless context demands it
+      const coreSentenceBuilders = ['i','am','feel','my','you','is','not','want','need','have','more','done','help','stop','yes','no','do','get','like','can'];
+      const foodWords = ['pancakes','sandwich','pizza','salad','soup','pasta','apple','bread','cereal','burger','eggs','water','hungry'];
+      const emotionWords = ['happy','sad','angry','calm','worried','excited','tired','fine','good','okay','scared','sick','better','worse'];
 
-      const pool = preferFood
-        ? sentenceFallback.concat(foodFallback).concat(emotionFallback)
-        : preferEmotions
-          ? sentenceFallback.concat(emotionFallback).concat(foodFallback)
-          : sentenceFallback.concat(emotionFallback).concat(foodFallback);
-      console.log('[FALLBACK POOL]', { gen: generationId, preferSymbols, poolSample: pool.slice(0,6) });
+      // Only add topic words if context strongly implies them
+      let pool = [...coreSentenceBuilders];
+      if (preferFood) pool = pool.concat(foodWords).concat(emotionWords);
+      else if (preferEmotions) pool = pool.concat(emotionWords);
+      // Otherwise just use sentence builders — no random nouns
+
+      console.log('[FALLBACK POOL]', { gen: generationId, preferFood, preferEmotions, poolSize: pool.length });
       for (const w of pool) {
         if (deduped.length >= requestedCount) break;
         if (seenAnswers.has(w)) continue;

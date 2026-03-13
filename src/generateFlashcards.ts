@@ -32,9 +32,11 @@ function getOpenAI(): OpenAI {
 
 const MAX_CONTEXT_TOKENS = Number(process.env.MAX_CONTEXT_TOKENS || 450);
 
+// Only strip words that are truly meaningless as standalone AAC cards
+// NEVER strip 'i', 'am', 'my', 'me' — these are critical AAC vocabulary
 const ALWAYS_STRIP = new Set([
   'very', 'really', 'just', 'so', 'quite', 'kinda', 'kind',
-  'of', 'a', 'an', 'the', 'that', 'this', 'those', 'these',
+  'of', 'an', 'the', 'that', 'this', 'those', 'these',
 ]);
 
 function trimContext(raw: string): string {
