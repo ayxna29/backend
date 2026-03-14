@@ -359,40 +359,27 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const supabase = getSupabase();
     const contextHash = sha256Base64(context);
     
-    const { data: existingGen } = await supabase
+    // Always create a fresh generation — reuse disabled
+    generationId = randomUUID();
+    const { data: insertRows, error: insertErr } = await supabase
       .from('flashcard_generations')
+      .insert([{
+        id: generationId,
+        user_id: user.id,
+        context_hash: contextHash,
+        context_text: context,
+        model_name: MODEL_NAME,
+        prompt_version: promptVersion,
+        created_at: new Date().toISOString(),
+      }])
       .select('id')
-      .eq('user_id', user.id)
-      .eq('context_hash', contextHash)
-      .eq('prompt_version', promptVersion)
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
 
-    if (existingGen) {
-      generationId = existingGen.id;
-      console.log('[REUSING GENERATION]', generationId);
-    } else {
-      generationId = randomUUID();
-      const { data: insertRows, error: insertErr } = await supabase
-        .from('flashcard_generations')
-        .insert([{
-          id: generationId,
-          user_id: user.id,
-          context_hash: contextHash,
-          context_text: context,
-          model_name: MODEL_NAME,
-          prompt_version: promptVersion,
-          created_at: new Date().toISOString(),
-        }])
-        .select('id')
-        .limit(1);
-
-      if (insertErr) {
-        console.error('[GEN INSERT ERROR]', insertErr);
-        return res.status(500).json({ error: 'Failed to log generation' });
-      }
-      console.log('[NEW GENERATION]', generationId);
+    if (insertErr) {
+      console.error('[GEN INSERT ERROR]', insertErr);
+      return res.status(500).json({ error: 'Failed to log generation' });
     }
+    console.log('[NEW GENERATION]', generationId);
     mark('gen_row');
 
     let contextFromTags = '';
@@ -658,19 +645,24 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     console.log('[GEN PRE-INSERT]', { gen: generationId, rows: rows.length, firstRow: rows[0] });
 
     mark('db_insert_start');
-    const { data: inserted, error: insertErr } = await getSupabase()
+    const { data: inserted, error: flashcardInsertErr } = await getSupabase()
       .from('flashcards')
       .insert(rows)
       .select('id, question, answer, tag, asset_filename');
     mark('db_insert_done');
 
-    if (insertErr) {
-      console.error('[flashcards insert error]', { gen: generationId, code: insertErr.code, message: insertErr.message, details: insertErr.details });
+    if (flashcardInsertErr) {
+      console.error('[flashcards insert error]', {
+        gen: generationId,
+        code: flashcardInsertErr.code ?? '',
+        message: flashcardInsertErr.message ?? '',
+        details: flashcardInsertErr.details ?? ''
+      });
       return res.status(500).json({ error: 'DB insert failed', generation_id: generationId });
     }
     console.log('[flashcards insert ok]', { generationId, inserted: inserted?.length || 0 });
 
-    const responseCards = inserted.map((card: any, i: number) => ({
+    const responseCards = (inserted ?? []).map((card: any, i: number) => ({
       id: card.id,
       question: card.question,
       answer: card.answer,
