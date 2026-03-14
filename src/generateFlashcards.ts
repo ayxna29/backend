@@ -161,7 +161,7 @@ export async function generateFlashcards(
 ].join('\n');
 
   const modelUsed = process.env.FAST_MODEL_NAME || process.env.MODEL_NAME || 'gpt-5-nano';
-  const temperature = Number(process.env.GEN_TEMPERATURE ?? 0.3);
+  const temperature = Number(process.env.GEN_TEMPERATURE ?? 1);
   const openai = getOpenAI();
 
   const completion = await openai.chat.completions.create({
