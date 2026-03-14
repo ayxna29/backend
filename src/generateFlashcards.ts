@@ -127,7 +127,7 @@ export async function generateFlashcards(
   const ctx = context.toLowerCase();
   const isGreeting = /how are you|how r you|how are u|how do you feel|how was your|how did you|good morning|good night|good afternoon|how.s it going|how have you|what.s up|feeling today/.test(ctx);
   const isFood = /eat|eating|ate|eaten|hungry|hunger|food|breakfast|lunch|dinner|supper|snack|drink|drinking|drank|thirsty|meal|cook|bake|baking|pizza|burger|sandwich|cereal|restaurant|cafe|kitchen|taste|flavor|yummy|delicious|apple|pasta|rice|soup|fruit|veggie/.test(ctx);
-  const isPain = /hurt|hurting|pain|painful|sore|sick|ill|unwell|doctor|hospital|nurse|medicine|ache|fever|ouch|injury|injure|dizzy|nausea|nauseous|vomit|headache|stomachache|not feel|don.t feel|feel bad|feeling bad|feel sick/.test(ctx);
+  const isPain = /hurt|hurting|pain|painful|sore|sick|ill|unwell|doctor|hospital|nurse|medicine|ache|fever|ouch|injury|injure|dizzy|nausea|nauseous|vomit|headache|stomachache|not feel|don.t feel|feel bad|feeling bad|feel sick|body part|part of your body|where does it hurt|what hurts/.test(ctx);
   const isActivity = /play|playing|game|games|watch|watching|tv|movie|film|go|going|outside|park|school|class|lesson|sport|swim|swimming|run|running|bike|biking|read|reading|book|draw|drawing|music|dance|dancing|craft|build/.test(ctx);
   const isNeed = /want|need|help|bathroom|toilet|potty|water|tired|sleep|sleeping|rest|resting|stop|done|finish|more|again|break|wait|ready|not ready/.test(ctx);
   const isEmotion = /feel|feeling|emotion|happy|sad|angry|mad|scared|fear|worried|worry|excited|upset|calm|bored|lonely|nervous|anxious|proud|love|hate|frustrated|overwhelm/.test(ctx);
@@ -144,7 +144,6 @@ export async function generateFlashcards(
       '- Verbs: am, feel, doing, having, need',
       '- Social: yes, no, thank you',
       '- Person connectors: i, my',
-      'WHAT DOES NOT BELONG: body parts, food, school, home, friend, random nouns',
     ].join('\n');
   } else if (isFood) {
     situationGuide = [
@@ -154,7 +153,6 @@ export async function generateFlashcards(
       '- Feeling words: hungry, full, yummy, yuck, like, love, want',
       '- Verbs: want, eat, drink, have, like, need, make, taste',
       '- Social: please, more, done, stop, help',
-      'WHAT DOES NOT BELONG: unrelated emotions, body parts, places',
     ].join('\n');
   } else if (isPain) {
     situationGuide = [
@@ -165,7 +163,6 @@ export async function generateFlashcards(
       '- Verbs: hurt, feel, need, want, help, stop, rest',
       '- Social: please, help, yes, no',
       '- Include positive options too: better, okay, fine',
-      'WHAT DOES NOT BELONG: food, school, unrelated places',
     ].join('\n');
   } else if (isActivity) {
     situationGuide = [
@@ -175,7 +172,6 @@ export async function generateFlashcards(
       '- Verbs: go, play, want, like, watch, do, can, come',
       '- Person connectors: i, my, you, we',
       '- Social: please, yes, no, more, done',
-      'WHAT DOES NOT BELONG: food, body parts, emotions unrelated to the activity',
     ].join('\n');
   } else if (isNeed) {
     situationGuide = [
@@ -185,7 +181,6 @@ export async function generateFlashcards(
       '- Verbs: want, need, help, stop, go, do',
       '- Person connectors: i, my, you',
       '- Social: please, yes, no, more, done, help',
-      'WHAT DOES NOT BELONG: unrelated nouns, random emotions, body parts',
     ].join('\n');
   } else {
     situationGuide = [
@@ -278,7 +273,7 @@ export async function generateFlashcards(
 
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
   const fitzCounts = new Map<string, number>();
-  const MAX_PER_FITZ = Math.max(3, Math.ceil(requestedCount * 0.25));
+  const MAX_PER_FITZ = Math.max(6, Math.ceil(requestedCount * 0.40)); // relaxed - was blocking descriptors
 
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
@@ -288,7 +283,7 @@ export async function generateFlashcards(
     const cleaned = cleanAnswer(o.answer, hardBan);
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
-    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'descriptor';
     const currentCount = fitzCounts.get(fitz) || 0;
     if (currentCount >= MAX_PER_FITZ) continue;
     seen.add(cleaned);
@@ -298,13 +293,15 @@ export async function generateFlashcards(
   }
 
   if (cards.length < requestedCount) {
+    // Second pass: relax diversity limit but still use correct fitz from AI
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
       if (!o || typeof o.answer !== 'string') continue;
       const cleaned = cleanAnswer(o.answer, hardBan);
       if (!cleaned || seen.has(cleaned)) continue;
       seen.add(cleaned);
-      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+      // Use the AI's fitz value — don't default to noun
+      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'descriptor';
       cards.push({ question: context, answer: cleaned, fitz });
     }
   }
