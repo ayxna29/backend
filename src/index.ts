@@ -239,27 +239,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     ).toString().toLowerCase();
     const answerLength = ANSWER_LENGTHS.has(answerLengthRaw) ? answerLengthRaw : 'mixed';
 
-    const reuseRaw =
-      (req.query.reuse !== undefined ? req.query.reuse :
-       rawInput.reuse !== undefined ? rawInput.reuse :
-       (body as any)?.reuse);
-    function toBool(val: any, def=true) {
-      if (val === undefined || val === null) return def;
-      if (val === false) return false;
-      if (val === true) return true;
-      if (typeof val === 'string') {
-        const v = val.toLowerCase().trim();
-        if (['false','0','no','off'].includes(v)) return false;
-        if (['true','1','yes','on'].includes(v)) return true;
-      }
-      return def;
-    }
-    const reuse = toBool(reuseRaw, true);
-
     let incomingTags: string[] = [];
     if (Array.isArray(rawInput.tags)) incomingTags = rawInput.tags;
     if (typeof req.query.tag === 'string') incomingTags.push(req.query.tag as string);
-    const inferTagsFlag = toBool(req.query.infer_tags ?? rawInput.infer_tags, false);
+    const inferTagsRaw = req.query.infer_tags ?? rawInput.infer_tags;
+    const inferTagsFlag = inferTagsRaw === true || inferTagsRaw === 'true' || inferTagsRaw === '1';
 
     incomingTags = incomingTags
       .map(t => t?.toString().trim().toLowerCase())
@@ -267,93 +251,9 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     generationId = randomUUID();
 
-    const advancedOptionsUsed =
-      answerLength !== 'mixed' ||
-      incomingTags.length > 0 ||
-      inferTagsFlag;
-
-    console.log('[GEN OPTIONS]', {
-      gen: generationId,
-      requestedCount: effectiveCount,
-      answerLength,
-      incomingTags,
-      inferTagsFlag,
-      reuseRequested: reuse,
-      advancedOptionsUsed
-    });
+    console.log('[GEN OPTIONS]', { gen: generationId, requestedCount: effectiveCount, answerLength, incomingTags, inferTagsFlag });
     mark('parsed');
 
-    let attemptedReuse = false;
-    if (reuse && !advancedOptionsUsed) {
-      attemptedReuse = true;
-      console.log('[REUSE CHECK] eligible simple path');
-      try {
-        const contextHash = sha256Base64(context);
-        const supabase = getSupabase();
-        const sinceIso = new Date(Date.now() - 1000).toISOString(); // cache disabled - always regenerate
-        
-        const { error: ensureErr } = await supabase
-          .from('flashcard_generations')
-          .upsert(
-            [{
-              id: generationId,
-              user_id: user.id,
-              context_hash: contextHash,
-              context_text: context,
-              prompt_version: promptVersion,
-              created_at: new Date().toISOString(),
-            }],
-            { onConflict: 'user_id,context_hash,prompt_version' }
-          );
-        
-        if (ensureErr) {
-          console.warn('[REUSE ENSURE ROW FAILED]', ensureErr);
-        }
-
-        const { data: prev, error: prevErr } = await supabase
-          .from('flashcard_generations')
-          .select('id, model_name, prompt_version, created_at')
-          .eq('user_id', user.id)
-          .eq('context_hash', contextHash)
-          .eq('prompt_version', promptVersion)
-          .is('error_message', null)
-          .gte('created_at', sinceIso)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!prevErr && prev) {
-          const { data: prevCards, error: pcErr } = await supabase
-            .from('flashcards')
-            .select('question, answer, tag, generation_id')
-            .eq('generation_id', prev.id);
-
-          if (!pcErr && prevCards?.length) {
-            const ageSec = Math.round((Date.now() - new Date(prev.created_at).getTime()) / 1000);
-            console.log('[REUSE HIT]', { gen: prev.id, cards: prevCards.length, ageSec });
-            return res.json({
-              generation_id: prev.id,
-              model: prev.model_name,
-              requested_count: requestedCount,
-              effective_count: requestedCount,
-              reused: true,
-              cache_age_sec: ageSec,
-              flashcards: prevCards,
-              prompt_version: prev.prompt_version,
-              answer_length: 'mixed',
-              applied_tags: [],
-              traceId: req.traceId
-            });
-          }
-        }
-        console.log('[REUSE MISS]');
-      } catch (e) {
-        console.warn('[REUSE ERROR]', e);
-      }
-    } else {
-      if (!reuse) console.log('[REUSE SKIPPED] user disabled');
-      else console.log('[REUSE BYPASSED] advanced options', { answerLength, incomingTagsCount: incomingTags.length, inferTagsFlag });
-    }
     mark('reuse_decision');
 
     const supabase = getSupabase();
@@ -361,7 +261,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     
     // Always create a fresh generation — reuse disabled
     generationId = randomUUID();
-    const { data: insertRows, error: insertErr } = await supabase
+    const { data: insertRows, error: genInsertErr } = await supabase
       .from('flashcard_generations')
       .insert([{
         id: generationId,
@@ -375,8 +275,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       .select('id')
       .limit(1);
 
-    if (insertErr) {
-      console.error('[GEN INSERT ERROR]', insertErr);
+    if (genInsertErr) {
+      console.error('[GEN INSERT ERROR]', genInsertErr);
       return res.status(500).json({ error: 'Failed to log generation' });
     }
     console.log('[NEW GENERATION]', generationId);
@@ -503,26 +403,10 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       console.warn('[TAG FILTER ERROR]', e);
     }
 
+    // No fallback pool — if AI returns fewer cards than requested, use what we have
+    // Fallback was injecting irrelevant words (home/school/food) regardless of context
     if (deduped.length < requestedCount) {
-      // Context-aware fallback — only add words if genuinely short, prioritize sentence builders
-      // Never pad with random nouns like home/school/food unless context demands it
-      const coreSentenceBuilders = ['i','am','feel','my','you','is','not','want','need','have','more','done','help','stop','yes','no','do','get','like','can'];
-      const foodWords = ['pancakes','sandwich','pizza','salad','soup','pasta','apple','bread','cereal','burger','eggs','water','hungry'];
-      const emotionWords = ['happy','sad','angry','calm','worried','excited','tired','fine','good','okay','scared','sick','better','worse'];
-
-      // Only add topic words if context strongly implies them
-      let pool = [...coreSentenceBuilders];
-      if (preferFood) pool = pool.concat(foodWords).concat(emotionWords);
-      else if (preferEmotions) pool = pool.concat(emotionWords);
-      // Otherwise just use sentence builders — no random nouns
-
-      console.log('[FALLBACK POOL]', { gen: generationId, preferFood, preferEmotions, poolSize: pool.length });
-      for (const w of pool) {
-        if (deduped.length >= requestedCount) break;
-        if (seenAnswers.has(w)) continue;
-        seenAnswers.add(w);
-        deduped.push({ question: originalPromptQuestion, answer: w, role: 'content', fitz: null });
-      }
+      console.log('[SHORT GENERATION]', { gen: generationId, got: deduped.length, requested: requestedCount });
     }
 
     const cleanedStats = {
@@ -645,19 +529,14 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     console.log('[GEN PRE-INSERT]', { gen: generationId, rows: rows.length, firstRow: rows[0] });
 
     mark('db_insert_start');
-    const { data: inserted, error: flashcardInsertErr } = await getSupabase()
+    const { data: inserted, error: insertErr } = await getSupabase()
       .from('flashcards')
       .insert(rows)
       .select('id, question, answer, tag, asset_filename');
     mark('db_insert_done');
 
-    if (flashcardInsertErr) {
-      console.error('[flashcards insert error]', {
-        gen: generationId,
-        code: flashcardInsertErr.code ?? '',
-        message: flashcardInsertErr.message ?? '',
-        details: flashcardInsertErr.details ?? ''
-      });
+    if (insertErr) {
+      console.error('[flashcards insert error]', { gen: generationId, code: insertErr.code, message: insertErr.message, details: insertErr.details });
       return res.status(500).json({ error: 'DB insert failed', generation_id: generationId });
     }
     console.log('[flashcards insert ok]', { generationId, inserted: inserted?.length || 0 });
