@@ -32,10 +32,9 @@ function getOpenAI(): OpenAI {
 
 const MAX_CONTEXT_TOKENS = Number(process.env.MAX_CONTEXT_TOKENS || 450);
 
-// Never strip i, am, my, me — critical AAC vocabulary
 const ALWAYS_STRIP = new Set([
   'very', 'really', 'just', 'so', 'quite', 'kinda', 'kind',
-  'of', 'an', 'the', 'that', 'this', 'those', 'these',
+  'of', 'a', 'an', 'the', 'that', 'this', 'those', 'these',
 ]);
 
 function trimContext(raw: string): string {
@@ -47,12 +46,12 @@ function trimContext(raw: string): string {
 
 function normalise(s: string): string {
   return s
-    .replace(/["""',.?!;()\-]/g, ' ')
+    .replace(/["""',.?!;:()\-]/g, ' ')
     .toLowerCase()
-    .replace(/\bi['\u2019]m\b/g, 'im')
-    .replace(/\bdon['\u2019]t\b/g, 'dont')
-    .replace(/\bcan['\u2019]t\b/g, 'cant')
-    .replace(/\bwon['\u2019]t\b/g, 'wont')
+    .replace(/\bi['']m\b/g, 'im')
+    .replace(/\bdon['']t\b/g, 'dont')
+    .replace(/\bcan['']t\b/g, 'cant')
+    .replace(/\bwon['']t\b/g, 'wont')
     .split(/\s+/)
     .filter(Boolean)
     .join(' ');
@@ -87,13 +86,23 @@ function extractArray(raw: string): any[] {
 function cleanAnswer(raw: string, hardBan: Set<string>): string | null {
   let a = normalise(raw);
   if (!a) return null;
+
   const words = a.split(' ').filter(Boolean);
+
+  // Allow up to 2 words (for phrases like "ice cream", "all done", "thank you")
   if (words.length > 2) return null;
+
   const filtered = words.filter(w => !ALWAYS_STRIP.has(w));
   if (filtered.length === 0) return null;
+
+  // Rejoin (handles both 1 and 2 word answers)
   a = filtered.join(' ');
+
   if (hardBan.has(a)) return null;
+
+  // Allow letters, apostrophes, spaces (for 2-word phrases)
   if (!/^[a-z' ]{1,40}$/.test(a)) return null;
+
   return a;
 }
 
@@ -108,11 +117,17 @@ export async function generateFlashcards(
   availableSymbols: string[] = [],
 ) {
   context = trimContext(context);
+
   const hardBan = new Set((options.hardBan || []).map(w => normalise(w)));
+
   const previousAnswers = dedupeLower(
-    (options.previousAnswers || []).map(a => normalise(a)).filter(a => a.length > 0).slice(0, 40)
+    (options.previousAnswers || [])
+      .map(a => normalise(a))
+      .filter(a => a.length > 0)
+      .slice(0, 40)
   );
 
+  // 65% context words, 35% sentence builders
   const contentCount = Math.max(2, Math.round(requestedCount * 0.65));
   const coreCount = requestedCount - contentCount;
 
@@ -123,118 +138,54 @@ export async function generateFlashcards(
     ? `- Already shown recently, skip: ${previousAnswers.slice(0, 15).join(', ')}`
     : '';
 
-  // Situation classifier
-  const ctx = context.toLowerCase();
-  const isGreeting = /how are you|how r you|how are u|how do you feel|how was your|how did you|good morning|good night|good afternoon|how.s it going|how have you|what.s up|feeling today/.test(ctx);
-  const isFood = /eat|eating|ate|eaten|hungry|hunger|food|breakfast|lunch|dinner|supper|snack|drink|drinking|drank|thirsty|meal|cook|bake|baking|pizza|burger|sandwich|cereal|restaurant|cafe|kitchen|taste|flavor|yummy|delicious|apple|pasta|rice|soup|fruit|veggie/.test(ctx);
-  const isPain = /hurt|hurting|pain|painful|sore|sick|ill|unwell|doctor|hospital|nurse|medicine|ache|fever|ouch|injury|injure|dizzy|nausea|nauseous|vomit|headache|stomachache|not feel|don.t feel|feel bad|feeling bad|feel sick|body part|part of your body|where does it hurt|what hurts/.test(ctx);
-  const isActivity = /play|playing|game|games|watch|watching|tv|movie|film|go|going|outside|park|school|class|lesson|sport|swim|swimming|run|running|bike|biking|read|reading|book|draw|drawing|music|dance|dancing|craft|build/.test(ctx);
-  const isNeed = /want|need|help|bathroom|toilet|potty|water|tired|sleep|sleeping|rest|resting|stop|done|finish|more|again|break|wait|ready|not ready/.test(ctx);
-  const isEmotion = /feel|feeling|emotion|happy|sad|angry|mad|scared|fear|worried|worry|excited|upset|calm|bored|lonely|nervous|anxious|proud|love|hate|frustrated|overwhelm/.test(ctx);
-
-  let situationGuide: string;
-  if (isGreeting) {
-    situationGuide = [
-      'SITUATION TYPE: Greeting / check-in',
-      'WHAT BELONGS HERE:',
-      '- Feeling words — include BOTH positive and negative emotions. Do not lean negative.',
-      '  Positive: excited, great, happy, good, loved, proud, calm, wonderful, silly, amazing',
-      '  Negative: tired, sad, sick, scared, nervous, bored, confused, upset',
-      '  Pick a realistic mix',
-      '- Verbs: am, feel, doing, having, need',
-      '- Social: yes, no, thank you',
-      '- Person connectors: i, my',
-    ].join('\n');
-  } else if (isFood) {
-    situationGuide = [
-      'SITUATION TYPE: Food / eating',
-      'WHAT BELONGS HERE:',
-      '- Food/drink words: start with anything mentioned, then freely add varied foods — pizza, pasta, juice, apple, sandwich, cereal, soup, water, snack, fruit, bread. Be creative.',
-      '- Feeling words: hungry, full, yummy, yuck, like, love, want',
-      '- Verbs: want, eat, drink, have, like, need, make, taste',
-      '- Social: please, more, done, stop, help',
-    ].join('\n');
-  } else if (isPain) {
-    situationGuide = [
-      'SITUATION TYPE: Pain / feeling unwell',
-      'WHAT BELONGS HERE:',
-      '- Body parts: include parts mentioned or implied. For general unwell situations, common parts like head, stomach, throat, arm, leg are fair since person may need to point to where it hurts.',
-      '- Pain descriptors: hurt, sore, bad, sick, tired, scared, better, worse, okay, fine, awful, dizzy',
-      '- Verbs: hurt, feel, need, want, help, stop, rest',
-      '- Social: please, help, yes, no',
-      '- Include positive options too: better, okay, fine',
-    ].join('\n');
-  } else if (isActivity) {
-    situationGuide = [
-      'SITUATION TYPE: Activity / play / going somewhere',
-      'WHAT BELONGS HERE:',
-      '- Activity/place words specific to the situation',
-      '- Verbs: go, play, want, like, watch, do, can, come',
-      '- Person connectors: i, my, you, we',
-      '- Social: please, yes, no, more, done',
-    ].join('\n');
-  } else if (isNeed) {
-    situationGuide = [
-      'SITUATION TYPE: Expressing a need',
-      'WHAT BELONGS HERE:',
-      '- Need words from the context',
-      '- Verbs: want, need, help, stop, go, do',
-      '- Person connectors: i, my, you',
-      '- Social: please, yes, no, more, done, help',
-    ].join('\n');
-  } else {
-    situationGuide = [
-      `SITUATION TYPE: General — responding to: "${context}"`,
-      'Before adding any word, ask: would this person actually tap this to respond?',
-      'If the answer is probably not — leave it out. Every word must earn its place.',
-    ].join('\n');
-  }
-
   const prompt = [
-    'You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.',
-    'A non-speaking person taps these cards one at a time to build sentences and communicate.',
-    '',
+    `You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.`,
+    `A non-speaking person taps these cards one at a time to build sentences and communicate.`,
+    ``,
     `SITUATION: "${context}"`,
-    '',
-    situationGuide,
-    '',
-    'STEP 1 - Internally write 5 complete sentences this person might tap out.',
-    `Example for "how are you today": "i am good", "i feel tired", "i am excited", "i need help", "i feel happy"`,
-    'Include positive emotions, not just negative. Make sentences varied.',
-    '',
-    'STEP 2 - Extract every word needed to build those sentences as individual cards.',
-    'For each sentence, check every word is covered. The user must be able to reconstruct those sentences card by card.',
-    '',
-    `SECTION A — CONTENT WORDS (exactly ${contentCount} cards)`,
-    'The meaningful words: feelings, actions, objects, descriptors for this situation.',
-    'Follow the SITUATION TYPE guide above.',
-    'Include a RANGE of emotions — both positive (excited, great, proud, loved) and negative (sad, tired, scared).',
-    '',
-    `SECTION B — SENTENCE CONNECTORS (exactly ${coreCount} cards)`,
-    'Words that glue sentences together: pronouns, linking verbs, function words.',
-    'Extract from the sentences in step 1. Always include: i, am (or feel/is as needed).',
-    '',
-    'MULTI-WORD: fixed phrases allowed: "ice cream", "all done", "thank you", "good morning"',
-    '',
-    'RULES:',
-    '- Answers: 1 word or 1 fixed phrase (max 2 words), lowercase',
-    '- No punctuation except spaces in 2-word phrases',
-    '- No duplicates',
-    '- No meta-words: answer, question, sentence, example, word, topic',
+    ``,
+    `STEP 1 - Think of 6 DIFFERENT things this person might want to say in this situation.`,
+    `Make them varied — different emotions, needs, responses, not all the same type.`,
+    `Do NOT output these sentences.`,
+    ``,
+    `STEP 2 - Generate the cards below.`,
+    ``,
+    `SECTION A — CONTEXT WORDS (exactly ${contentCount} cards)`,
+    `Words directly relevant to this specific situation.`,
+    `CRITICAL DIVERSITY RULE: spread across multiple categories. Do NOT generate more than`,
+    `2-3 words from the same Fitzgerald category. For example if the situation is about feelings,`,
+    `pick 2-3 feeling descriptors max, then move on to relevant nouns, verbs, social words etc.`,
+    `Think: what variety of words would help someone respond fully to this situation?`,
+    ``,
+    `SECTION B — SENTENCE BUILDERS (exactly ${coreCount} cards)`,
+    `Core grammar words needed to form sentences about this situation.`,
+    `Pick the ones most likely needed — don't just dump all pronouns.`,
+    `Infer what's actually needed from the 6 sentences you imagined.`,
+    ``,
+    `MULTI-WORD EXCEPTION: common fixed phrases are allowed as a single card:`,
+    `"ice cream", "all done", "thank you", "good morning", "play area"`,
+    `These must be natural compound concepts, not random word combos.`,
+    ``,
+    `RULES:`,
+    `- Answers: 1 word (or 1 fixed compound phrase max 2 words), lowercase`,
+    `- No punctuation except spaces in 2-word phrases`,
+    `- No duplicates`,
+    `- No meta-words: answer, question, topic, sentence, response, example, word`,
+    `- No irrelevant generic padding — every word must earn its place`,
     hardBanLine,
     prevLine,
-    '',
-    'FITZGERALD KEY — add "fitz" to every card:',
-    '  "person"     -> i, you, he, she, we, they, me, my, mom, dad',
-    '  "verb"       -> am, is, feel, want, need, go, eat, help, do, have, hurt, like',
-    '  "descriptor" -> happy, excited, great, proud, calm, loved, silly, nervous, confused, bored, surprised, grateful, sad, angry, scared, tired, sick, okay, fine, better, hot, cold',
-    '  "noun"       -> things/objects/places specific to the situation',
-    '  "social"     -> yes, no, please, more, stop, done, again, wait, sorry, thank you',
-    '  "question"   -> what, where, when, why, who, how',
-    '',
-    'OUTPUT — return ONLY valid JSON, no markdown:',
-    '{"cards": [{"question": "...", "answer": "...", "fitz": "..."}]}',
-    '',
+    ``,
+    `FITZGERALD KEY — add "fitz" field to every card:`,
+    `  "person"     -> i, you, he, she, we, they, me, my, mom, dad, friend`,
+    `  "verb"       -> actions/states: am, is, feel, want, need, go, eat, help, do, have, hurt`,
+    `  "descriptor" -> adjectives/feelings: good, bad, happy, sad, tired, sick, sore, better, hot, cold`,
+    `  "noun"       -> things/places/body parts: home, food, school, water, head, stomach`,
+    `  "social"     -> yes, no, please, more, stop, done, help, again, wait, sorry, thank you`,
+    `  "question"   -> what, where, when, why, who, how`,
+    ``,
+    `OUTPUT — return ONLY valid JSON, no markdown, no explanation:`,
+    `{"cards": [{"question": "...", "answer": "...", "fitz": "..."}]}`,
+    ``,
     `Generate exactly ${requestedCount} cards. Section A first, Section B last.`,
   ].filter(l => l !== null && l !== undefined).join('\n');
 
@@ -250,11 +201,10 @@ export async function generateFlashcards(
       {
         role: 'system',
         content: [
-          'You are an AAC communication assistant generating situation-specific vocabulary.',
+          'You are an AAC communication assistant.',
           'Output ONLY the JSON object specified. No preamble, no explanation, no markdown.',
-          'CRITICAL: Every card must be directly relevant to the specific situation provided.',
-          'Follow the SITUATION TYPE guide in the prompt — it tells you exactly what categories to use.',
-          'Do NOT fall back to generic vocabulary (random body parts, food, school) unless the situation demands it.',
+          'Every "answer" must be a word or short fixed phrase a non-speaking person would tap.',
+          'DIVERSITY IS CRITICAL',
         ].join('\n'),
       },
       { role: 'user', content: prompt }
@@ -272,8 +222,10 @@ export async function generateFlashcards(
   }
 
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
+
+  // Track per-category counts to enforce diversity
   const fitzCounts = new Map<string, number>();
-  const MAX_PER_FITZ = Math.max(6, Math.ceil(requestedCount * 0.40)); // relaxed - was blocking descriptors
+  const MAX_PER_FITZ = Math.max(3, Math.ceil(requestedCount * 0.25)); // max 25% from one category
 
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
@@ -283,25 +235,28 @@ export async function generateFlashcards(
     const cleaned = cleanAnswer(o.answer, hardBan);
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
-    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'descriptor';
+
+    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+
+    // Enforce diversity — skip if category is full
     const currentCount = fitzCounts.get(fitz) || 0;
     if (currentCount >= MAX_PER_FITZ) continue;
+
     seen.add(cleaned);
     fitzCounts.set(fitz, currentCount + 1);
     cards.push({ question: context, answer: cleaned, fitz });
     if (cards.length >= requestedCount) break;
   }
 
+  // Second pass ignoring diversity limit if we're still short
   if (cards.length < requestedCount) {
-    // Second pass: relax diversity limit but still use correct fitz from AI
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
       if (!o || typeof o.answer !== 'string') continue;
       const cleaned = cleanAnswer(o.answer, hardBan);
       if (!cleaned || seen.has(cleaned)) continue;
       seen.add(cleaned);
-      // Use the AI's fitz value — don't default to noun
-      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'descriptor';
+      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
       cards.push({ question: context, answer: cleaned, fitz });
     }
   }
