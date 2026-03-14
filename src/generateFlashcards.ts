@@ -32,9 +32,10 @@ function getOpenAI(): OpenAI {
 
 const MAX_CONTEXT_TOKENS = Number(process.env.MAX_CONTEXT_TOKENS || 450);
 
+// 'a' removed — keep all meaningful single-letter words like 'i'
 const ALWAYS_STRIP = new Set([
   'very', 'really', 'just', 'so', 'quite', 'kinda', 'kind',
-  'of', 'a', 'an', 'the', 'that', 'this', 'those', 'these',
+  'of', 'an', 'the', 'that', 'this', 'those', 'these',
 ]);
 
 function trimContext(raw: string): string {
@@ -223,9 +224,8 @@ export async function generateFlashcards(
 
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
 
-  // Track per-category counts to enforce diversity
   const fitzCounts = new Map<string, number>();
-  const MAX_PER_FITZ = Math.max(3, Math.ceil(requestedCount * 0.25)); // max 25% from one category
+  const MAX_PER_FITZ = Math.max(3, Math.ceil(requestedCount * 0.25));
 
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
@@ -236,9 +236,10 @@ export async function generateFlashcards(
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
 
-    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+    // Use AI's fitz value — don't default everything to noun
+    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
+    if (!fitz) continue; // skip cards with no valid fitz — AI must provide it
 
-    // Enforce diversity — skip if category is full
     const currentCount = fitzCounts.get(fitz) || 0;
     if (currentCount >= MAX_PER_FITZ) continue;
 
@@ -248,15 +249,15 @@ export async function generateFlashcards(
     if (cards.length >= requestedCount) break;
   }
 
-  // Second pass ignoring diversity limit if we're still short
+  // Second pass — relax diversity, still use AI's fitz not a default
   if (cards.length < requestedCount) {
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
       if (!o || typeof o.answer !== 'string') continue;
       const cleaned = cleanAnswer(o.answer, hardBan);
       if (!cleaned || seen.has(cleaned)) continue;
-      seen.add(cleaned);
       const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
+      seen.add(cleaned);
       cards.push({ question: context, answer: cleaned, fitz });
     }
   }
