@@ -94,6 +94,7 @@ function cleanAnswer(raw: string, hardBan: Set<string>): string | null {
   return a;
 }
 
+// Non-streaming version (kept for internal use / fallback)
 export async function generateFlashcards(
   context: string,
   requestedCount: number,
@@ -104,70 +105,83 @@ export async function generateFlashcards(
   options: FlashcardGenOptions = {},
   availableSymbols: string[] = [],
 ) {
+  const { cards, rawContent, modelUsed } = await generateFlashcardsStream(
+    context, requestedCount, maxCount, promptVersion, answerLength,
+    recentAvg, options, availableSymbols,
+    () => {} // no-op card callback
+  );
+  return { cards, rawContent, modelUsed };
+}
+
+// Streaming version — calls onCard(card) each time a new card is ready
+export async function generateFlashcardsStream(
+  context: string,
+  requestedCount: number,
+  maxCount: number,
+  promptVersion: number,
+  answerLength: string = 'mixed',
+  recentAvg: number | null = null,
+  options: FlashcardGenOptions = {},
+  availableSymbols: string[] = [],
+  onCard: (card: Flashcard) => void,
+): Promise<FlashcardGenResult> {
   context = trimContext(context);
   const hardBan = new Set((options.hardBan || []).map(w => normalise(w)));
   const previousAnswers = dedupeLower(
     (options.previousAnswers || []).map(a => normalise(a)).filter(a => a.length > 0).slice(0, 40)
   );
 
-  const contentCount = Math.max(2, Math.round(requestedCount * 0.65));
-  const coreCount = requestedCount - contentCount;
-
-  const hardBanLine = Array.from(hardBan).length > 0
-    ? `- NEVER include: ${Array.from(hardBan).join(', ')}` : '';
-  const prevLine = previousAnswers.length > 0
-    ? `- Already shown recently, skip: ${previousAnswers.slice(0, 15).join(', ')}` : '';
-
   const prompt = [
-  `You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.`,
-  `A non-speaking person taps these cards one at a time to build sentences and communicate.`,
-  ``,
-  `SITUATION: "${context}"`,
-  ``,
-  `Your task is to generate vocabulary that would realistically be used by someone responding in this situation.`,
-  ``,
-  `The cards should work together so the user can tap multiple cards in sequence to form responses.`,
-  `Think about the words someone might use to answer, react, explain, or participate in this situation.`,
-  ``,
-  `Every card must clearly relate to the situation.`,
-  `Avoid random words that would not make sense in a response.`,
-  ``,
-  `Examples`,
-  ``,
-  `Situation: "how are you feeling"`,
-  `Possible vocabulary: i, am, feel, bad, good, amazing, better, today`,
-  ``,
-  `Situation: "what is your name"`,
-  `Possible vocabulary: i, am, my, name, called, dont know`,
-  ``,
-  `Guidelines`,
-  `- Cards should combine naturally with other cards to form responses.`,
-  `- Prefer single words but short 2-word phrases are allowed if commonly used together.`,
-  `- All answers must be lowercase.`,
-  `- No duplicates.`,
-  ``,
-  `FITZGERALD KEY — assign a category to each card`,
-  `  "person"     -> i, you, he, she, we, they, me, my`,
-  `  "verb"       -> am, is, feel, want, need, go, eat, help, do, have`,
-  `  "descriptor" -> good, bad, happy, sad, tired, sick, better, okay`,
-  `  "noun"       -> people, places, or things relevant to the situation`,
-  `  "social"     -> yes, no, please, thank you, more, stop, done`,
-  `  "question"   -> what, where, when, why, who, how`,
-  ``,
-  `Return exactly ${requestedCount} cards.`,
-  ``,
-  `OUTPUT JSON ONLY`,
-  `{"cards":[{"question":"${context}","answer":"word","fitz":"person|verb|descriptor|noun|social|question"}]}`
-].join('\n');
+    `You generate AAC (Augmentative and Alternative Communication) vocabulary flashcards.`,
+    `A non-speaking person taps these cards one at a time to build sentences and communicate.`,
+    ``,
+    `SITUATION: "${context}"`,
+    ``,
+    `Your task is to generate vocabulary that would realistically be used by someone responding in this situation.`,
+    ``,
+    `The cards should work together so the user can tap multiple cards in sequence to form responses.`,
+    `Think about the words someone might use to answer, react, explain, or participate in this situation.`,
+    ``,
+    `Every card must clearly relate to the situation.`,
+    `Avoid random words that would not make sense in a response.`,
+    ``,
+    `Examples`,
+    ``,
+    `Situation: "how are you feeling"`,
+    `Possible vocabulary: i, am, feel, bad, good, amazing, better, today`,
+    ``,
+    `Situation: "what is your name"`,
+    `Possible vocabulary: i, am, my, name, called, dont know`,
+    ``,
+    `Guidelines`,
+    `- Cards should combine naturally with other cards to form responses.`,
+    `- Prefer single words but short 2-word phrases are allowed if commonly used together.`,
+    `- All answers must be lowercase.`,
+    `- No duplicates.`,
+    ``,
+    `FITZGERALD KEY — assign a category to each card`,
+    `  "person"     -> i, you, he, she, we, they, me, my`,
+    `  "verb"       -> am, is, feel, want, need, go, eat, help, do, have`,
+    `  "descriptor" -> good, bad, happy, sad, tired, sick, better, okay`,
+    `  "noun"       -> people, places, or things relevant to the situation`,
+    `  "social"     -> yes, no, please, thank you, more, stop, done`,
+    `  "question"   -> what, where, when, why, who, how`,
+    ``,
+    `Return exactly ${requestedCount} cards.`,
+    ``,
+    `OUTPUT JSON ONLY`,
+    `{"cards":[{"question":"${context}","answer":"word","fitz":"person|verb|descriptor|noun|social|question"}]}`
+  ].join('\n');
 
   const modelUsed = process.env.FAST_MODEL_NAME || process.env.MODEL_NAME || 'gpt-5-nano';
   const temperature = Number(process.env.GEN_TEMPERATURE ?? 1);
   const openai = getOpenAI();
 
-  const completion = await openai.chat.completions.create({
+  // Use streaming completion
+  const stream = await openai.chat.completions.create({
     model: modelUsed,
     temperature,
-    response_format: { type: 'json_object' },
+    stream: true,
     messages: [
       {
         role: 'system',
@@ -182,40 +196,66 @@ export async function generateFlashcards(
     ]
   });
 
-  const raw = completion.choices?.[0]?.message?.content || '{"cards":[]}';
-
-  let arr: any[] = [];
-  try {
-    const obj = JSON.parse(raw);
-    arr = Array.isArray(obj.cards) ? obj.cards : extractArray(raw);
-  } catch {
-    arr = extractArray(raw);
-  }
-
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
   const fitzCounts = new Map<string, number>();
   const MAX_PER_FITZ = Math.max(4, Math.ceil(requestedCount * 0.35));
-
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
 
-  for (const o of arr) {
-    if (!o || typeof o.answer !== 'string') continue;
-    const cleaned = cleanAnswer(o.answer, hardBan);
-    if (!cleaned) continue;
-    if (seen.has(cleaned)) continue;
-    const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : null;
-    if (!fitz) continue;
-    const currentCount = fitzCounts.get(fitz) || 0;
-    if (currentCount >= MAX_PER_FITZ) continue;
-    seen.add(cleaned);
-    fitzCounts.set(fitz, currentCount + 1);
-    cards.push({ question: context, answer: cleaned, fitz });
-    if (cards.length >= requestedCount) break;
+  let rawContent = '';
+  let buffer = '';
+
+  // Parse cards incrementally as JSON chunks stream in.
+  // Strategy: look for complete {"question":...,"answer":...,"fitz":...} objects in the buffer.
+  const cardRegex = /\{[^{}]*?"answer"\s*:\s*"([^"]+)"[^{}]*?"fitz"\s*:\s*"([^"]+)"[^{}]*?\}/g;
+  const cardRegex2 = /\{[^{}]*?"fitz"\s*:\s*"([^"]+)"[^{}]*?"answer"\s*:\s*"([^"]+)"[^{}]*?\}/g;
+
+  function tryExtractNewCards() {
+    // Try both field orderings
+    for (const regex of [cardRegex, cardRegex2]) {
+      regex.lastIndex = 0;
+      let match;
+      while ((match = regex.exec(buffer)) !== null) {
+        const answerRaw = regex === cardRegex ? match[1] : match[2];
+        const fitzRaw   = regex === cardRegex ? match[2] : match[1];
+
+        const cleaned = cleanAnswer(answerRaw, hardBan);
+        if (!cleaned || seen.has(cleaned)) continue;
+        if (!VALID_FITZ.has(fitzRaw)) continue;
+        const currentCount = fitzCounts.get(fitzRaw) || 0;
+        if (currentCount >= MAX_PER_FITZ) continue;
+
+        seen.add(cleaned);
+        fitzCounts.set(fitzRaw, currentCount + 1);
+        const card: Flashcard = { question: context, answer: cleaned, fitz: fitzRaw };
+        cards.push(card);
+        onCard(card); // 🔥 emit card immediately
+        if (cards.length >= requestedCount) return;
+      }
+    }
+  }
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content || '';
+    rawContent += delta;
+    buffer += delta;
+
+    // Only try to parse once we have a reasonable chunk (avoid thrashing)
+    if (buffer.includes('"answer"') && buffer.includes('"fitz"')) {
+      tryExtractNewCards();
+      if (cards.length >= requestedCount) break;
+    }
+  }
+
+  // Final pass on complete buffer — catch anything missed during streaming
+  if (cards.length < requestedCount) {
+    buffer = rawContent;
+    tryExtractNewCards();
   }
 
   // Second pass — relax diversity cap
   if (cards.length < requestedCount) {
+    const arr = extractArray(rawContent);
     for (const o of arr) {
       if (cards.length >= requestedCount) break;
       if (!o || typeof o.answer !== 'string') continue;
@@ -223,7 +263,9 @@ export async function generateFlashcards(
       if (!cleaned || seen.has(cleaned)) continue;
       const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
       seen.add(cleaned);
-      cards.push({ question: context, answer: cleaned, fitz });
+      const card: Flashcard = { question: context, answer: cleaned, fitz };
+      cards.push(card);
+      onCard(card);
     }
   }
 
@@ -237,5 +279,5 @@ export async function generateFlashcards(
     sample: cards.slice(0, 6).map(c => `${c.answer}(${c.fitz})`),
   });
 
-  return { cards, rawContent: raw, modelUsed };
+  return { cards, rawContent, modelUsed };
 }

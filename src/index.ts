@@ -13,7 +13,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
 import { verifyJwt, getSupabase } from './supabase.js';
-import { generateFlashcards } from './generateFlashcards.js';
+import { generateFlashcards, generateFlashcardsStream } from './generateFlashcards.js';
 import { logGenerationComplete } from './logging.js';
 import { parseGenerateBody, normalizeTag, MAX_CONTEXT_CHARS, MAX_COUNT } from './validation.js';
 import {
@@ -33,7 +33,7 @@ console.log('[STARTUP] index.ts loaded');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const MODEL_NAME = process.env.MODEL_NAME || 'gpt-5-nano'; // override default model
+const MODEL_NAME = process.env.MODEL_NAME || 'gpt-5-nano';
 const PORT = Number(process.env.PORT || 5000);
 const DEFAULT_COUNT = 30;
 const ENABLE_EMBED = (process.env.ENABLE_EMBEDDING || 'true').toLowerCase() === 'true';
@@ -258,10 +258,8 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     const supabase = getSupabase();
     const contextHash = sha256Base64(context);
-    
-    // Always create a fresh generation — use timestamp in hash to avoid unique constraint
+
     generationId = randomUUID();
-    // Append timestamp to make context_hash unique per request
     const uniqueContextHash = sha256Base64(context + '_' + Date.now().toString());
     const { data: insertRows, error: genInsertErr } = await supabase
       .from('flashcard_generations')
@@ -291,7 +289,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         .select(`id, tag_name, tag_contexts (context_text)`)
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
-      
+
       if (userTags && userTags.length > 0) {
         contextFromTags = 'USER PERSONAL CONTEXT:\n━━━━━━━━━━━━━━━━━━\n';
         for (const tag of userTags) {
@@ -309,7 +307,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     } catch (e) {
       console.warn('[TAG CONTEXT ERROR]', e);
     }
-    
+
     const enhancedContext = contextFromTags + context;
 
     const recentAvg = 0;
@@ -327,9 +325,55 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const preferEmotions = hasFeelingTag || emotionContextRegex.test(context);
     const preferSymbols = preferFood || preferEmotions;
 
-    let genResult: any;
-    {
-      const { cards, rawContent, modelUsed } = await generateFlashcards(
+    // ── Detect stream mode ────────────────────────────────────────────────
+    const isStreamRequest =
+      req.query.stream === '1' ||
+      req.query.stream === 'true' ||
+      rawInput.stream === true ||
+      rawInput.stream === 1;
+
+    let cards: any[];
+    let rawContent: string;
+
+    if (isStreamRequest) {
+      // ── STREAMING PATH ────────────────────────────────────────────────
+      // Set headers before writing anything so the client can start reading
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('X-Generation-Id', generationId ?? '');
+      res.flushHeaders();
+
+      const streamedCards: any[] = [];
+
+      const result = await generateFlashcardsStream(
+        enhancedContext,
+        requestedCount,
+        requestedCount,
+        promptVersion,
+        answerLength,
+        null,
+        { relatedPrompts, previousAnswers, hardBan, softDeprioritize, preferSymbols },
+        AVAILABLE_SYMBOLS,
+        (card) => {
+          streamedCards.push(card);
+          // Emit each card immediately as it is parsed from the model stream
+          const partial = {
+            type: 'card',
+            index: streamedCards.length - 1,
+            answer: card.answer,
+            fitz: card.fitz ?? null,
+            asset_filename: matchSymbolFilename(card.answer, AVAILABLE_SYMBOLS) || 'blank.svg',
+          };
+          res.write(JSON.stringify(partial) + '\n');
+        }
+      );
+
+      cards = result.cards;
+      rawContent = result.rawContent;
+      modelUsed = result.modelUsed;
+    } else {
+      // ── NORMAL PATH ───────────────────────────────────────────────────
+      const result = await generateFlashcards(
         enhancedContext,
         requestedCount,
         requestedCount,
@@ -339,9 +383,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         { relatedPrompts, previousAnswers, hardBan, softDeprioritize, preferSymbols },
         AVAILABLE_SYMBOLS
       );
-      genResult = { cards, rawContent, modelUsed };
+      cards = result.cards;
+      rawContent = result.rawContent;
+      modelUsed = result.modelUsed;
     }
-    const { cards, rawContent, modelUsed } = genResult;
+
     mark('model_done');
 
     let rawCards = cards || [];
@@ -405,8 +451,6 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       console.warn('[TAG FILTER ERROR]', e);
     }
 
-    // No fallback pool — if AI returns fewer cards than requested, use what we have
-    // Fallback was injecting irrelevant words (home/school/food) regardless of context
     if (deduped.length < requestedCount) {
       console.log('[SHORT GENERATION]', { gen: generationId, got: deduped.length, requested: requestedCount });
     }
@@ -493,6 +537,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     if (!keptCards.length) {
       await logGenerationComplete({ generationId: generationId ?? '', cards: [], raw: null, latencyMs: Date.now() - t0, modelName: modelUsed, error: 'no_valid_cards' });
+      if (isStreamRequest) {
+        res.write(JSON.stringify({ type: 'error', error: 'No valid cards generated', generation_id: generationId ?? '' }) + '\n');
+        res.end();
+        return;
+      }
       return res.status(422).json({ error: 'No valid cards generated', generation_id: generationId ?? '' });
     }
 
@@ -539,6 +588,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     if (insertErr) {
       console.error('[flashcards insert error]', { gen: generationId, code: insertErr.code, message: insertErr.message, details: insertErr.details });
+      if (isStreamRequest) {
+        res.write(JSON.stringify({ type: 'error', error: 'DB insert failed', generation_id: generationId }) + '\n');
+        res.end();
+        return;
+      }
       return res.status(500).json({ error: 'DB insert failed', generation_id: generationId });
     }
     console.log('[flashcards insert ok]', { generationId, inserted: inserted?.length || 0 });
@@ -575,6 +629,24 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     metrics.generationSuccess++;
     metrics.totalLatencyMs += Date.now() - t0;
 
+    // ── Send final response ───────────────────────────────────────────────
+    if (isStreamRequest) {
+      // Write the `done` line — contains full cards with DB ids so Flutter
+      // can match streamed partials to real card ids for favouriting etc.
+      res.write(JSON.stringify({
+        type: 'done',
+        generation_id: generationId,
+        requested_count: requestedCount,
+        effective_count: effectiveCount,
+        answer_length: forcedAnswerLength,
+        applied_tags: finalTags,
+        flashcards: responseCards,
+        timings: stageTimes,
+      }) + '\n');
+      res.end();
+      return;
+    }
+
     return res.json({
       generation_id: generationId,
       requested_count: requestedCount,
@@ -587,6 +659,7 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       flashcards: responseCards,
       timings: stageTimes
     });
+
   } catch (e: any) {
     metrics.generationError++;
     metrics.totalLatencyMs += Date.now() - t0;
@@ -597,6 +670,21 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       } catch {}
     }
     const isClient = /Invalid body|context exceeds/.test(e?.message || '');
+
+    // If we already started streaming we can't send a status code — just write error line
+    const isStreamRequest =
+      req.query.stream === '1' ||
+      req.query.stream === 'true' ||
+      (req.body?.stream === true || req.body?.stream === 1);
+
+    if (isStreamRequest && res.headersSent) {
+      try {
+        res.write(JSON.stringify({ type: 'error', error: e?.message || 'Server error' }) + '\n');
+        res.end();
+      } catch {}
+      return;
+    }
+
     res.status(isClient ? 400 : 500).json({ error: e?.message || 'Server error', generation_id: generationId, traceId: req.traceId });
   }
 });
@@ -649,15 +737,15 @@ app.post('/flashcards/:id/favorite', async (req, res) => {
     const sb = getSupabase();
     const { data: existingUser } = await sb.from('users').select('*').eq('id', user.id).single();
     if (!existingUser) {
-      const { error: userUpsertErr } = await sb.from('users').upsert([{ 
-        id: user.id, 
+      const { error: userUpsertErr } = await sb.from('users').upsert([{
+        id: user.id,
         email: user.email || `${user.id}@placeholder.local`,
         name: 'Anonymous',
         role: 'user'
       }], { onConflict: 'id' });
       if (userUpsertErr) console.error('[USER UPSERT ERROR]', userUpsertErr);
     }
-    
+
     const { data: card, error: cErr } = await sb.from('flashcards').select('id,user_id').eq('id', cardId).single();
     if (cErr || !card || card.user_id !== user.id) {
       return res.status(404).json({ error: 'flashcard_not_found' });
@@ -1007,23 +1095,19 @@ app.delete('/optimization/favorites/:id', async (req, res) => {
 
 function matchSymbolFilename(answer: string, availableSymbols: string[]): string {
   const normalized = answer.toLowerCase().trim().replace(/\s+/g, '_');
-  
-  // 1. Exact match with .svg extension
+
   const exactWithExt = availableSymbols.find(s => s.toLowerCase() === `${normalized}.svg`);
   if (exactWithExt) { console.log('[EXACT MATCH]', { answer, matched: exactWithExt }); return exactWithExt; }
-  
-  // 2. Exact match without extension
+
   const exactDirect = availableSymbols.find(s => s.toLowerCase() === normalized || s.toLowerCase() === `${normalized}.svg`);
   if (exactDirect) { console.log('[DIRECT MATCH]', { answer, matched: exactDirect }); return exactDirect; }
-  
-  // 3. Strict partial prefix match
+
   const partial = availableSymbols.find(s => {
     const lower = s.toLowerCase();
     return lower === `${normalized}_` || lower.startsWith(`${normalized}_`) || lower === `${normalized}.svg`;
   });
   if (partial) { console.log('[PARTIAL MATCH]', { answer, matched: partial }); return partial; }
-  
-  // 4. Synonym mapping
+
   const synonymMap: Record<string, string> = {
     'happy': 'happy_lady', 'glad': 'happy_lady', 'joyful': 'happy_lady', 'cheerful': 'happy_lady',
     'sad': 'sad_lady', 'unhappy': 'sad_lady', 'upset': 'sad_lady', 'miserable': 'sad_lady',
@@ -1052,14 +1136,13 @@ function matchSymbolFilename(answer: string, availableSymbols: string[]): string
     'morning': 'morning', 'night': 'moon', 'bedtime': 'bed_time',
     'ice_cream': 'ice_cream', 'all_done': 'finish', 'thank_you': 'thank_you',
   };
-  
+
   const synonym = synonymMap[normalized];
   if (synonym) {
     const synonymMatch = availableSymbols.find(s => s.toLowerCase() === `${synonym}.svg` || s.toLowerCase().startsWith(`${synonym}_`));
     if (synonymMatch) { console.log('[SYNONYM MATCH]', { answer, synonym, matched: synonymMatch }); return synonymMatch; }
   }
 
-  // 4.5 Token-level match for multiword answers
   if (normalized.includes('_')) {
     const tokens = normalized.split('_').map(t => t.trim()).filter(Boolean);
     for (const t of tokens) {
@@ -1073,7 +1156,6 @@ function matchSymbolFilename(answer: string, availableSymbols: string[]): string
     }
   }
 
-  // Direct token map lookup
   if (!normalized.includes('_')) {
     const tokenList = SYMBOL_TOKEN_MAP.get(normalized);
     if (tokenList && tokenList.length) {
@@ -1094,34 +1176,24 @@ function matchSymbolFilename(answer: string, availableSymbols: string[]): string
       return 'blank.svg';
     }
   }
-  
-  // 5. Safe Fuzzy Match — only for words >= 6 chars to avoid like->lime, sore->score
+
   if (normalized.length >= 6) {
     let bestMatch: string | null = null;
     let bestDistance = 99;
     for (const symbol of availableSymbols) {
       const base = symbol.toLowerCase().replace('.svg', '').split('_')[0];
-
-      // Must share same starting letter
       if (!base || base[0] !== normalized[0]) continue;
-
-      // Must share same ending letter — prevents like->lime, sore->score
       if (base[base.length - 1] !== normalized[normalized.length - 1]) continue;
-
-      // Very close length only
       if (Math.abs(base.length - normalized.length) > 1) continue;
-
       const dist = levenshteinDistance(normalized, base);
       if (dist < bestDistance) { bestDistance = dist; bestMatch = symbol; }
     }
-
     if (bestMatch && bestDistance <= 1) {
       console.log('[FUZZY MATCH]', { answer, distance: bestDistance, matched: bestMatch });
       return bestMatch;
     }
   }
-  
-  // 5.5 Constrained contains match
+
   const containsCandidates: string[] = [];
   for (const s of availableSymbols) {
     const base = s.toLowerCase().replace('.svg', '');
@@ -1138,7 +1210,7 @@ function matchSymbolFilename(answer: string, availableSymbols: string[]): string
     console.log('[CONSTRAINED CONTAINS MATCH]', { answer, matched: containsCandidates[0] });
     return containsCandidates[0];
   }
-  
+
   console.warn('[NO MATCH]', { answer, using_fallback: 'blank.svg' });
   try { const logPath = path.resolve(__dirname, '../../unmatched.txt'); fs.appendFileSync(logPath, `${answer}\n`, 'utf-8'); } catch (e) {}
   return 'blank.svg';
