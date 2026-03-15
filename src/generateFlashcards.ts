@@ -85,7 +85,7 @@ function cleanAnswer(raw: string, hardBan: Set<string>): string | null {
   let a = normalise(raw);
   if (!a) return null;
   const words = a.split(' ').filter(Boolean);
-  if (words.length > 2) return null;
+  if (words.length > 3) return null;
   const filtered = words.filter(w => !ALWAYS_STRIP.has(w));
   if (filtered.length === 0) return null;
   a = filtered.join(' ');
@@ -198,7 +198,9 @@ export async function generateFlashcardsStream(
 
   const VALID_FITZ = new Set(['person', 'verb', 'descriptor', 'noun', 'social', 'question']);
   const fitzCounts = new Map<string, number>();
-  const MAX_PER_FITZ = Math.max(4, Math.ceil(requestedCount * 0.35));
+  // Raised cap: allow up to 60% per category so one dominant type doesn't
+  // cause everything to be thrown away and trigger a 422
+  const MAX_PER_FITZ = Math.max(8, Math.ceil(requestedCount * 0.60));
   const seen = new Set<string>();
   const cards: Flashcard[] = [];
 
