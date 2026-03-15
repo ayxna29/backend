@@ -259,14 +259,16 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     const supabase = getSupabase();
     const contextHash = sha256Base64(context);
     
-    // Always create a fresh generation — reuse disabled
+    // Always create a fresh generation — use timestamp in hash to avoid unique constraint
     generationId = randomUUID();
+    // Append timestamp to make context_hash unique per request
+    const uniqueContextHash = sha256Base64(context + '_' + Date.now().toString());
     const { data: insertRows, error: genInsertErr } = await supabase
       .from('flashcard_generations')
       .insert([{
         id: generationId,
         user_id: user.id,
-        context_hash: contextHash,
+        context_hash: uniqueContextHash,
         context_text: context,
         model_name: MODEL_NAME,
         prompt_version: promptVersion,
