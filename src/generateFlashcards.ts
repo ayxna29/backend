@@ -169,15 +169,18 @@ export async function generateFlashcardsStream(
     ``,
     `Return exactly ${requestedCount} cards.`,
     ``,
-    `OUTPUT JSON ONLY`,
-    `{"cards":[{"question":"${context}","answer":"word","fitz":"person|verb|descriptor|noun|social|question"}]}`
+    `OUTPUT FORMAT: one JSON object per line, no array wrapper, no preamble.`,
+    `Each line must be a complete valid JSON object. Output them one by one immediately.`,
+    `{"answer":"word","fitz":"verb"}`,
+    `{"answer":"word2","fitz":"noun"}`,
+    `...and so on, one per line.`
   ].join('\n');
 
   const modelUsed = process.env.FAST_MODEL_NAME || process.env.MODEL_NAME || 'gpt-5-nano';
   const temperature = Number(process.env.GEN_TEMPERATURE ?? 1);
   const openai = getOpenAI();
 
-  // Use streaming completion
+  // Streaming — NDJSON format so cards arrive one per line as the model writes them
   const stream = await openai.chat.completions.create({
     model: modelUsed,
     temperature,
@@ -187,9 +190,10 @@ export async function generateFlashcardsStream(
         role: 'system',
         content: [
           'You are an AAC communication assistant generating situation-specific vocabulary.',
-          'Output ONLY the JSON object specified. No preamble, no explanation, no markdown.',
-          'CRITICAL: Every single card must be a word this person would actually use to respond to the exact situation given.',
-          'Think: if someone asked me this question, what words would I tap to answer it? EVERY FLASHCARD/WORD MUST BE JUSTIFIABLE AS A REAL RESPONSE TO THE SITUATION.',
+          'Output ONLY raw NDJSON — one {"answer":"...","fitz":"..."} object per line.',
+          'No array brackets, no "cards" key, no preamble, no explanation, no markdown.',
+          'Write each card on its own line immediately as you think of it — do not buffer.',
+          'CRITICAL: Every word must be something this person would actually tap to respond to the situation.',
         ].join('\n'),
       },
       { role: 'user', content: prompt }
@@ -205,71 +209,52 @@ export async function generateFlashcardsStream(
   const cards: Flashcard[] = [];
 
   let rawContent = '';
-  let buffer = '';
+  // lineBuffer accumulates characters until we see a newline, then we try
+  // to parse the line as a JSON object. This way each card is emitted the
+  // moment the model finishes writing that line — true streaming.
+  let lineBuffer = '';
 
-  // Parse cards incrementally as JSON chunks stream in.
-  // Strategy: look for complete {"question":...,"answer":...,"fitz":...} objects in the buffer.
-  const cardRegex = /\{[^{}]*?"answer"\s*:\s*"([^"]+)"[^{}]*?"fitz"\s*:\s*"([^"]+)"[^{}]*?\}/g;
-  const cardRegex2 = /\{[^{}]*?"fitz"\s*:\s*"([^"]+)"[^{}]*?"answer"\s*:\s*"([^"]+)"[^{}]*?\}/g;
-
-  function tryExtractNewCards() {
-    // Try both field orderings
-    for (const regex of [cardRegex, cardRegex2]) {
-      regex.lastIndex = 0;
-      let match;
-      while ((match = regex.exec(buffer)) !== null) {
-        const answerRaw = regex === cardRegex ? match[1] : match[2];
-        const fitzRaw   = regex === cardRegex ? match[2] : match[1];
-
-        const cleaned = cleanAnswer(answerRaw, hardBan);
-        if (!cleaned || seen.has(cleaned)) continue;
-        if (!VALID_FITZ.has(fitzRaw)) continue;
-        const currentCount = fitzCounts.get(fitzRaw) || 0;
-        if (currentCount >= MAX_PER_FITZ) continue;
-
-        seen.add(cleaned);
-        fitzCounts.set(fitzRaw, currentCount + 1);
-        const card: Flashcard = { question: context, answer: cleaned, fitz: fitzRaw };
-        cards.push(card);
-        onCard(card); // 🔥 emit card immediately
-        if (cards.length >= requestedCount) return;
-      }
+  function tryParseLine(line: string) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) return;
+    try {
+      const o = JSON.parse(trimmed);
+      const answerRaw = o.answer ?? o.Answer ?? '';
+      const fitzRaw   = o.fitz   ?? o.Fitz   ?? '';
+      if (!answerRaw) return;
+      const cleaned = cleanAnswer(String(answerRaw), hardBan);
+      if (!cleaned || seen.has(cleaned)) return;
+      const fitz = VALID_FITZ.has(fitzRaw) ? String(fitzRaw) : 'noun';
+      const currentCount = fitzCounts.get(fitz) || 0;
+      if (currentCount >= MAX_PER_FITZ) return;
+      seen.add(cleaned);
+      fitzCounts.set(fitz, currentCount + 1);
+      const card: Flashcard = { question: context, answer: cleaned, fitz };
+      cards.push(card);
+      onCard(card); // 🔥 emitted immediately when the model finishes this line
+    } catch (_) {
+      // Not valid JSON yet — ignore
     }
   }
 
   for await (const chunk of stream) {
     const delta = chunk.choices?.[0]?.delta?.content || '';
     rawContent += delta;
-    buffer += delta;
+    lineBuffer += delta;
 
-    // Only try to parse once we have a reasonable chunk (avoid thrashing)
-    if (buffer.includes('"answer"') && buffer.includes('"fitz"')) {
-      tryExtractNewCards();
+    // Flush complete lines
+    const lines = lineBuffer.split('\n');
+    // Keep the last (possibly incomplete) segment in the buffer
+    lineBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      tryParseLine(line);
       if (cards.length >= requestedCount) break;
     }
+    if (cards.length >= requestedCount) break;
   }
 
-  // Final pass on complete buffer — catch anything missed during streaming
-  if (cards.length < requestedCount) {
-    buffer = rawContent;
-    tryExtractNewCards();
-  }
-
-  // Second pass — relax diversity cap
-  if (cards.length < requestedCount) {
-    const arr = extractArray(rawContent);
-    for (const o of arr) {
-      if (cards.length >= requestedCount) break;
-      if (!o || typeof o.answer !== 'string') continue;
-      const cleaned = cleanAnswer(o.answer, hardBan);
-      if (!cleaned || seen.has(cleaned)) continue;
-      const fitz = VALID_FITZ.has(o.fitz) ? o.fitz as string : 'noun';
-      seen.add(cleaned);
-      const card: Flashcard = { question: context, answer: cleaned, fitz };
-      cards.push(card);
-      onCard(card);
-    }
-  }
+  // Try the last buffered line in case the stream ended without a trailing newline
+  if (lineBuffer.trim()) tryParseLine(lineBuffer);
 
   if (cards.length > requestedCount) cards.length = requestedCount;
 
