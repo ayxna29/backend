@@ -17,6 +17,9 @@ services:
       - key: OPENAI_API_KEY
         value: ""      # Optional, set in Render UI if used
         scope: RUN_TIME
+      - key: OPENSYMBOLS_SECRET
+        value: ""      # Required for real symbol images — without it every card falls back to blank/local-only matching. Set in Render UI (same value as your local .env).
+        scope: RUN_TIME
       - key: WEBHOOK_SECRET
         value: ""      # Optional, set in Render UI if used
         scope: RUN_TIME
