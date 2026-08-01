@@ -20,3 +20,6 @@ services:
       - key: WEBHOOK_SECRET
         value: ""      # Optional, set in Render UI if used
         scope: RUN_TIME
+      - key: FRONTEND_ORIGIN
+        value: "https://connectaac-frontend.onrender.com"      # Must match the deployed frontend's exact origin (no trailing slash) or every browser request gets CORS-blocked
+        scope: RUN_TIME
