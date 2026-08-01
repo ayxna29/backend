@@ -144,6 +144,15 @@ const SYMBOL_TOKEN_MAP = buildSymbolTokenMap(AVAILABLE_SYMBOLS);
 
 const app = express();
 
+// Render (and Cloudflare in front of it) sit between clients and this
+// server, so every request arrives from that proxy's IP unless we trust
+// the X-Forwarded-For header it sets. Without this, express-rate-limit's
+// default per-IP keying saw ONE ip (the proxy) for every visitor, so the
+// "10 requests/min" generation limit was actually shared across the
+// entire site's traffic instead of being per-user — a handful of normal
+// batched generate calls from anyone was enough to 429 everyone.
+app.set('trust proxy', 1);
+
 // `origin: true` used to reflect whatever Origin header any caller sent
 // while credentials: true kept Access-Control-Allow-Credentials on — the
 // classic allow-any-origin-with-credentials CORS misconfiguration. Now
@@ -201,7 +210,13 @@ app.use((req: TraceRequest, _res, next) => {
   next();
 });
 
-const genLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
+// A single "Generate" tap already fires 3+ requests here (cards are
+// fetched in batches of 5 — see generateInBatches in the frontend), so a
+// cap of 10/min left room for barely 3 generate actions per minute before
+// legitimate use started 429ing. Raised to give real headroom per user
+// now that trust proxy (above) makes this correctly per-IP instead of
+// shared across every visitor.
+const genLimiter = rateLimit({ windowMs: 60_000, max: 40, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
 app.use('/generate_flashcards', genLimiter);
 
 // /embed isn't called by the app at all (verified — no frontend caller),
