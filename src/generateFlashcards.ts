@@ -1,9 +1,11 @@
 import OpenAI from 'openai';
+import { lookupSymbolUrl, isOpenSymbolsConfigured } from './opensymbols.js';
 
 export interface Flashcard {
   question: string;
   answer: string;
   fitz?: string | null;
+  assetUrl?: string | null;
 }
 
 export interface FlashcardGenResult {
@@ -145,6 +147,13 @@ export async function generateFlashcardsStream(
     `Every card must clearly relate to the situation.`,
     `Avoid random words that would not make sense in a response.`,
     ``,
+    previousAnswers.length > 0
+      ? [
+          `ALREADY USED — do not repeat any of these, generate different words instead:`,
+          previousAnswers.join(', '),
+          ``,
+        ].join('\n')
+      : ``,
     `Examples`,
     ``,
     `Situation: "how are you feeling"`,
@@ -180,11 +189,21 @@ export async function generateFlashcardsStream(
   const temperature = Number(process.env.GEN_TEMPERATURE ?? 1);
   const openai = getOpenAI();
 
+  // gpt-5-family models are reasoning models by default — they can spend
+  // most of their wall-clock time on internal reasoning tokens before
+  // emitting a single visible character, which is exactly what was making
+  // generation feel slow even after streaming + concurrent lookups: nothing
+  // streams out until that hidden reasoning finishes. Picking 5 short AAC
+  // words for a situation needs none of that, so cap effort to the minimum
+  // this SDK's types expose ('low') to keep the model in "just answer" mode.
+  const isReasoningModel = modelUsed.startsWith('gpt-5');
+
   // Streaming — NDJSON format so cards arrive one per line as the model writes them
   const stream = await openai.chat.completions.create({
     model: modelUsed,
     temperature,
     stream: true,
+    ...(isReasoningModel ? { reasoning_effort: 'low' as const } : {}),
     messages: [
       {
         role: 'system',
@@ -194,6 +213,7 @@ export async function generateFlashcardsStream(
           'No array brackets, no "cards" key, no preamble, no explanation, no markdown.',
           'Write each card on its own line immediately as you think of it — do not buffer.',
           'CRITICAL: Every word must be something this person would actually tap to respond to the situation.',
+          'CRITICAL: Never output a word listed under ALREADY USED in the prompt — pick a different word every time.',
         ].join('\n'),
       },
       { role: 'user', content: prompt }
@@ -214,27 +234,55 @@ export async function generateFlashcardsStream(
   // moment the model finishes writing that line — true streaming.
   let lineBuffer = '';
 
-  function tryParseLine(line: string) {
+  // Symbol lookups used to be awaited one at a time inside the parse loop,
+  // so N cards paid up to N * lookupTimeout sequentially. Now the
+  // accept/dedup decision happens synchronously (so the loop's
+  // `cards.length >= requestedCount` early-stop still works exactly as
+  // before), and the OpenSymbols enrichment for every accepted card fires
+  // concurrently in the background — total added latency collapses from
+  // N * timeout down to ~1 timeout ceiling. `pending` is awaited once after
+  // the loop so the function doesn't return before every lookup settles.
+  const pending: Promise<void>[] = [];
+
+  function tryParseLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed.startsWith('{')) return;
+    let o: any;
     try {
-      const o = JSON.parse(trimmed);
-      const answerRaw = o.answer ?? o.Answer ?? '';
-      const fitzRaw   = o.fitz   ?? o.Fitz   ?? '';
-      if (!answerRaw) return;
-      const cleaned = cleanAnswer(String(answerRaw), hardBan);
-      if (!cleaned || seen.has(cleaned)) return;
-      const fitz = VALID_FITZ.has(fitzRaw) ? String(fitzRaw) : 'noun';
-      const currentCount = fitzCounts.get(fitz) || 0;
-      if (currentCount >= MAX_PER_FITZ) return;
-      seen.add(cleaned);
-      fitzCounts.set(fitz, currentCount + 1);
-      const card: Flashcard = { question: context, answer: cleaned, fitz };
-      cards.push(card);
-      onCard(card); // 🔥 emitted immediately when the model finishes this line
+      o = JSON.parse(trimmed);
     } catch (_) {
-      // Not valid JSON yet — ignore
+      return; // Not valid JSON yet — ignore
     }
+    const answerRaw = o.answer ?? o.Answer ?? '';
+    const fitzRaw   = o.fitz   ?? o.Fitz   ?? '';
+    if (!answerRaw) return;
+    const cleaned = cleanAnswer(String(answerRaw), hardBan);
+    if (!cleaned || seen.has(cleaned)) return;
+    const fitz = VALID_FITZ.has(fitzRaw) ? String(fitzRaw) : 'noun';
+    const currentCount = fitzCounts.get(fitz) || 0;
+    if (currentCount >= MAX_PER_FITZ) return;
+    seen.add(cleaned);
+    fitzCounts.set(fitz, currentCount + 1);
+
+    const card: Flashcard = { question: context, answer: cleaned, fitz, assetUrl: null };
+    cards.push(card);
+
+    // Best-effort OpenSymbols lookup, fired concurrently with every other
+    // card's lookup instead of blocking this one. Bounded by a short
+    // timeout inside lookupSymbolUrl itself, so a slow/failed lookup can't
+    // stall the stream for long — the card still gets emitted either way,
+    // just without assetUrl, and the caller's local asset_filename matching
+    // covers that case.
+    pending.push((async () => {
+      if (isOpenSymbolsConfigured()) {
+        try {
+          card.assetUrl = await lookupSymbolUrl(cleaned);
+        } catch (e) {
+          console.warn('[OPENSYMBOLS] lookup error', { answer: cleaned, e });
+        }
+      }
+      onCard(card); // 🔥 emitted as soon as this card's own lookup resolves
+    })());
   }
 
   for await (const chunk of stream) {
@@ -255,6 +303,10 @@ export async function generateFlashcardsStream(
 
   // Try the last buffered line in case the stream ended without a trailing newline
   if (lineBuffer.trim()) tryParseLine(lineBuffer);
+
+  // Wait for every in-flight (concurrent) symbol lookup to settle before
+  // returning, so `cards[].assetUrl` is fully populated for the caller.
+  await Promise.all(pending);
 
   if (cards.length > requestedCount) cards.length = requestedCount;
 

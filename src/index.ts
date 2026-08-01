@@ -1,9 +1,35 @@
+import './loadEnv.js';
+
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 
-import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Global handlers to surface non-Error throwables (helpful for debugging
+// cases where libraries throw plain objects). These log all own property
+// names so we can see message-like fields even when `err` isn't an Error.
+import util from 'util';
+process.on('uncaughtException', (err) => {
+  try {
+    console.error('[UNCaught_EXCEPTION] typeof:', typeof err, 'inspect:', util.inspect(err, { depth: 3 }));
+    try {
+      console.error('[UNCaught_EXCEPTION DETAILS]', Object.getOwnPropertyNames(err).reduce((obj: any, k: string) => { obj[k] = (err as any)[k]; return obj; }, {}));
+    } catch (_) {}
+  } catch (e) {
+    console.error('[UNCaught_EXCEPTION - failed to log]', e);
+  }
+  // exit so the process supervisor can restart if desired
+  process.exit(1);
+});
+process.on('unhandledRejection', (rej) => {
+  try {
+    console.error('[UNHANDLED_REJECTION] typeof:', typeof rej, 'inspect:', util.inspect(rej, { depth: 3 }));
+    try {
+      if (rej && typeof rej === 'object') console.error('[UNHANDLED_REJECTION DETAILS]', Object.getOwnPropertyNames(rej).reduce((obj: any, k: string) => { obj[k] = (rej as any)[k]; return obj; }, {}));
+    } catch (_) {}
+  } catch (e) {
+    console.error('[UNHANDLED_REJECTION - failed to log]', e);
+  }
+});
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
@@ -24,6 +50,8 @@ import {
 } from './embeddings.js';
 import { sha256Base64 } from './hash.js';
 import { inferTagsFromCards } from './tagging.js';
+import { synthesizeSpeech, TTS_VOICES } from './tts.js';
+import { lookupSymbolUrl, isOpenSymbolsConfigured } from './opensymbols.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -115,7 +143,28 @@ function buildSymbolTokenMap(availableSymbols: string[]) {
 const SYMBOL_TOKEN_MAP = buildSymbolTokenMap(AVAILABLE_SYMBOLS);
 
 const app = express();
-app.use(cors({ origin: true, credentials: true, allowedHeaders: ['Authorization','Content-Type','Accept','Origin'] }));
+
+// `origin: true` used to reflect whatever Origin header any caller sent
+// while credentials: true kept Access-Control-Allow-Credentials on — the
+// classic allow-any-origin-with-credentials CORS misconfiguration. Now
+// only origins listed in FRONTEND_ORIGIN (comma-separated) are allowed.
+// Requests with no Origin header at all (native mobile apps, curl,
+// server-to-server calls) aren't a browser CSRF-style risk — CORS is a
+// browser-only enforcement mechanism — so those are always allowed
+// through regardless of this list.
+const ALLOWED_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  allowedHeaders: ['Authorization','Content-Type','Accept','Origin'],
+}));
 app.use(express.json());
 
 // Auth middleware
@@ -155,6 +204,24 @@ app.use((req: TraceRequest, _res, next) => {
 const genLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
 app.use('/generate_flashcards', genLimiter);
 
+// /embed isn't called by the app at all (verified — no frontend caller),
+// but was reachable with no auth and no rate limit, letting anyone force
+// this server to make OpenAI embedding calls on our billing account.
+// Locking it down the same way as every other route.
+const embedLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
+app.use('/embed', embedLimiter);
+
+// Higher ceiling than generation/embed — every tap of a card can trigger a
+// speak request during normal AAC use, so this needs real headroom while
+// still capping worst-case OpenAI TTS cost from a single account.
+const ttsLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
+app.use('/tts', ttsLimiter);
+
+// Called once per Classic-mode topic (client caches results), not per tap
+// — a modest limit is plenty.
+const symbolsLimiter = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: 'Too many requests' }) });
+app.use('/symbols/lookup', symbolsLimiter);
+
 app.get('/health', (_req, res) => res.json({status:'ok'}));
 app.head('/health', (_req, res) => res.status(200).end());
 
@@ -168,6 +235,8 @@ app.get('/metrics', (_req, res) => {
 });
 
 app.post('/embed', async (req: TraceRequest, res: Response) => {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
   try {
     const BodySchema = z.object({ text: z.string().min(1).max(2000) });
     const parsed = BodySchema.parse(req.body || {});
@@ -176,8 +245,64 @@ app.post('/embed', async (req: TraceRequest, res: Response) => {
     res.json({ model: EMBEDDING_MODEL, length: vec.length, embedding: vec });
   } catch (e: any) {
     if (e?.name === 'ZodError') return res.status(400).json({ error: 'Invalid body', issues: e.issues });
+    // Log full internals server-side only — don't hand raw driver/SDK
+    // error text (e?.message) back to the client.
     console.error('embed error:', e);
-    res.status(500).json({ error: e?.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/tts', async (req: TraceRequest, res: Response) => {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const BodySchema = z.object({
+      text: z.string().min(1).max(500),
+      voice: z.enum(TTS_VOICES).optional(),
+      tone: z.enum(['neutral', 'happy', 'excited', 'sad', 'frustrated']).optional(),
+    });
+    const { text, voice, tone } = BodySchema.parse(req.body || {});
+    const audio = await synthesizeSpeech(text, { voice, tone });
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(audio);
+  } catch (e: any) {
+    if (e?.name === 'ZodError') return res.status(400).json({ error: 'Invalid body', issues: e.issues });
+    console.error('tts error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Batch symbol image lookup for Classic mode's static topic boards — those
+// words never change, so this is a one-time resolution per topic (client
+// caches the result) rather than something called per-generation. Reuses
+// the same OpenSymbols client (and its cache) generateFlashcards.ts uses.
+app.post('/symbols/lookup', async (req: TraceRequest, res: Response) => {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const BodySchema = z.object({ words: z.array(z.string().min(1).max(40)).min(1).max(100) });
+    const { words } = BodySchema.parse(req.body || {});
+
+    const uniqueWords = Array.from(new Set(words.map(w => w.trim().toLowerCase()).filter(Boolean)));
+    const symbols: Record<string, string | null> = {};
+    if (isOpenSymbolsConfigured()) {
+      await Promise.all(uniqueWords.map(async (w) => {
+        try {
+          symbols[w] = await lookupSymbolUrl(w);
+        } catch {
+          symbols[w] = null;
+        }
+      }));
+    } else {
+      for (const w of uniqueWords) symbols[w] = null;
+    }
+
+    res.json({ symbols });
+  } catch (e: any) {
+    if (e?.name === 'ZodError') return res.status(400).json({ error: 'Invalid body', issues: e.issues });
+    console.error('symbols lookup error:', e);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -261,22 +386,60 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     generationId = randomUUID();
     const uniqueContextHash = sha256Base64(context + '_' + Date.now().toString());
-    const { data: insertRows, error: genInsertErr } = await supabase
-      .from('flashcard_generations')
-      .insert([{
-        id: generationId,
-        user_id: user.id,
-        context_hash: uniqueContextHash,
-        context_text: context,
-        model_name: MODEL_NAME,
-        prompt_version: promptVersion,
-        created_at: new Date().toISOString(),
-      }])
-      .select('id')
-      .limit(1);
 
-    if (genInsertErr) {
-      console.error('[GEN INSERT ERROR]', genInsertErr);
+    const lite = req.query.lite === '1' || req.query.lite === 'true' || (rawInput && (rawInput.lite === true || rawInput.lite === 1));
+
+    // Resolve the avoid-generation id up front (moved earlier from further
+    // down in this handler) so we can actually tell the MODEL which words
+    // to avoid, instead of only discarding them after the fact. Discarding
+    // after generation is what was causing whole batches to come back
+    // empty (422): if the model — with zero awareness of what it already
+    // said — regenerates the same handful of common AAC words, and every
+    // one of them collides with the previous batch, 100% of the batch gets
+    // filtered out. Telling the model up front dramatically reduces how
+    // often that full-collision case happens.
+    const avoidGenId = (rawInput.avoid_generation_id || req.query.avoid_generation_id || '').toString().trim() || null;
+    const avoidGenIdValid = !!avoidGenId && /^[0-9a-fA-F-]{36}$/.test(avoidGenId);
+
+    // These three Supabase round trips are independent of each other, but
+    // used to run one-after-another — pure network latency stacking up
+    // before the OpenAI call even started. Firing them concurrently saves
+    // roughly (N-1) round trips' worth of wall-clock time on every batch.
+    // Tag-context is skipped entirely for `lite` batches (the ones we most
+    // want to feel instant) since it's a personalization nicety, not
+    // something those fast early batches need.
+    const [genInsertRes, tagContextRes, avoidPreloadRes] = await Promise.all([
+      supabase
+        .from('flashcard_generations')
+        .insert([{
+          id: generationId,
+          user_id: user.id,
+          context_hash: uniqueContextHash,
+          context_text: context,
+          model_name: MODEL_NAME,
+          prompt_version: promptVersion,
+          created_at: new Date().toISOString(),
+        }])
+        .select('id')
+        .limit(1),
+      lite
+        ? Promise.resolve({ data: null, error: null })
+        : supabase
+            .from('user_tags')
+            .select(`id, tag_name, tag_contexts (context_text)`)
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true }),
+      avoidGenIdValid
+        ? supabase
+            .from('flashcards')
+            .select('answer')
+            .eq('generation_id', avoidGenId)
+            .eq('user_id', user.id)
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    if (genInsertRes.error) {
+      console.error('[GEN INSERT ERROR]', genInsertRes.error);
       return res.status(500).json({ error: 'Failed to log generation' });
     }
     console.log('[NEW GENERATION]', generationId);
@@ -284,25 +447,36 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     let contextFromTags = '';
     try {
-      const { data: userTags } = await supabase
-        .from('user_tags')
-        .select(`id, tag_name, tag_contexts (context_text)`)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
+      const userTags = tagContextRes.data as any[] | null;
       if (userTags && userTags.length > 0) {
-        contextFromTags = 'USER PERSONAL CONTEXT:\n━━━━━━━━━━━━━━━━━━\n';
-        for (const tag of userTags) {
-          const contexts = (tag.tag_contexts as any[]) || [];
-          if (contexts.length > 0) {
-            contextFromTags += `\n[${tag.tag_name}]\n`;
-            for (const ctx of contexts) {
-              contextFromTags += `- ${ctx.context_text}\n`;
+        // Only pull a tag's personal context into the prompt when that tag
+        // is actually relevant to THIS situation — either its name is
+        // mentioned in the prompt, or the caller explicitly selected it
+        // (incomingTags). Previously every tag's every context sentence
+        // was injected into every single generation regardless of topic,
+        // which skewed word choice toward unrelated personal context (e.g.
+        // a "soccer" tag's sentences bleeding into a prompt about
+        // breakfast) and made output feel random.
+        const contextLower = context.toLowerCase();
+        const relevantTags = userTags.filter(tag => {
+          const name = String(tag.tag_name || '').toLowerCase().trim();
+          if (!name) return false;
+          return contextLower.includes(name) || incomingTags.includes(name);
+        });
+        if (relevantTags.length > 0) {
+          contextFromTags = 'USER PERSONAL CONTEXT:\n━━━━━━━━━━━━━━━━━━\n';
+          for (const tag of relevantTags) {
+            const contexts = (tag.tag_contexts as any[]) || [];
+            if (contexts.length > 0) {
+              contextFromTags += `\n[${tag.tag_name}]\n`;
+              for (const ctx of contexts) {
+                contextFromTags += `- ${ctx.context_text}\n`;
+              }
             }
           }
+          contextFromTags += '\n━━━━━━━━━━━━━━━━━━\n\n';
         }
-        contextFromTags += '\n━━━━━━━━━━━━━━━━━━\n\n';
-        console.log('[TAG CONTEXT]', { gen: generationId, tags: userTags.length, contextLength: contextFromTags.length });
+        console.log('[TAG CONTEXT]', { gen: generationId, relevantTags: relevantTags.length, totalTags: userTags.length, contextLength: contextFromTags.length });
       }
     } catch (e) {
       console.warn('[TAG CONTEXT ERROR]', e);
@@ -312,9 +486,25 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     const recentAvg = 0;
     const relatedPrompts: string[] = [];
-    const previousAnswers: string[] = [];
-    const hardBan: string[] = [];
     const softDeprioritize: string[] = [];
+
+    let previousAnswers: string[] = [];
+    if (avoidGenIdValid) {
+      try {
+        const prevAnswersRows = avoidPreloadRes.data as any[] | null;
+        if (prevAnswersRows?.length) {
+          previousAnswers = prevAnswersRows.map(r => r.answer);
+          console.log('[AVOID PRELOAD]', { gen: generationId, avoid_generation_id: avoidGenId, count: previousAnswers.length });
+        }
+      } catch (e) {
+        console.warn('[AVOID PRELOAD ERROR]', e);
+      }
+    }
+    // hardBan feeds cleanAnswer()'s post-parse rejection inside
+    // generateFlashcardsStream, and previousAnswers gets written directly
+    // into the prompt as an "already used" list — both pull from the same
+    // set so the model is told AND any slip-throughs are still caught.
+    const hardBan: string[] = [...previousAnswers];
 
     const needContextRegex = /\b(eat|eating|hungry|food|breakfast|lunch|dinner|snack|pancake|cereal|sandwich|pizza|drink|thirsty)\b/i;
     const emotionContextRegex = /\b(how are you|how r you|how are u|how r u|how you|how's it going|how is it going|how do you feel)\b/i;
@@ -355,17 +545,23 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         { relatedPrompts, previousAnswers, hardBan, softDeprioritize, preferSymbols },
         AVAILABLE_SYMBOLS,
         (card) => {
-          streamedCards.push(card);
-          // Emit each card immediately as it is parsed from the model stream
-          const partial = {
-            type: 'card',
-            index: streamedCards.length - 1,
-            answer: card.answer,
-            fitz: card.fitz ?? null,
-            asset_filename: matchSymbolFilename(card.answer, AVAILABLE_SYMBOLS) || 'blank.svg',
-          };
-          res.write(JSON.stringify(partial) + '\n');
-        }
+            streamedCards.push(card);
+            // Emit each card immediately as it is parsed from the model stream.
+            // If the OpenSymbols lookup has already populated `assetUrl` on
+            // the card, expose it as `asset_url` so clients can load network
+            // images directly. We continue to include `asset_filename` as the
+            // local filename fallback when available.
+            const localFile = matchSymbolFilename(card.answer, AVAILABLE_SYMBOLS) || 'blank.svg';
+            const partial: any = {
+              type: 'card',
+              index: streamedCards.length - 1,
+              answer: card.answer,
+              fitz: card.fitz ?? null,
+              asset_filename: localFile,
+            };
+            if (card.assetUrl) partial.asset_url = card.assetUrl;
+            res.write(JSON.stringify(partial) + '\n');
+          }
       );
 
       cards = result.cards;
@@ -393,6 +589,21 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     let rawCards = cards || [];
     console.log('[GEN RAW]', { gen: generationId, raw_count: rawCards.length, sample: rawCards.slice(0, 3) });
 
+    // DEBUG: if the model returned nothing at all, capture the raw text it
+    // produced so we can see whether it was malformed JSON, an empty
+    // response, a refusal, or something else entirely.
+    if (rawCards.length === 0) {
+      console.error('[GEN RAW EMPTY]', {
+        gen: generationId,
+        modelUsed,
+        promptVersion,
+        answerLength,
+        requestedCount,
+        rawContentLength: (rawContent || '').length,
+        rawContentSnippet: (rawContent || '').slice(0, 2000),
+      });
+    }
+
     rawCards = rawCards
       .map((c: any) => {
         if (c && typeof c === 'object') {
@@ -407,6 +618,15 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         return null;
       })
       .filter(Boolean) as { question: string; answer: string; role: string; fitz: string | null }[];
+
+    // DEBUG: track schema-filtering drop-off. If `cards` from the model was
+    // non-empty above but rawCards is 0 here, the model's objects didn't
+    // have string `question`/`answer` fields (wrong shape) — log a sample
+    // of what actually came back so we can see the mismatch.
+    console.log('[GEN SCHEMA FILTER]', { gen: generationId, kept: rawCards.length });
+    if (rawCards.length === 0 && (cards || []).length > 0) {
+      console.error('[GEN SCHEMA MISMATCH]', { gen: generationId, sampleRaw: (cards || []).slice(0, 3) });
+    }
 
     const originalPromptQuestion = context;
 
@@ -425,8 +645,18 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     for (const c of rawCards) {
       const answer = clampShort(c.answer);
-      if (!answer) continue;
-      if (seenAnswers.has(answer)) continue;
+      if (!answer) {
+        // DEBUG: this raw answer clamped down to nothing (e.g. was only
+        // punctuation/whitespace) — worth knowing if this is happening a lot.
+        console.log('[GEN CLAMP EMPTY]', { gen: generationId, original: c.answer });
+        continue;
+      }
+      if (seenAnswers.has(answer)) {
+        // DEBUG: track dedup collisions — if many raw answers collapse to
+        // the same clamped string, that's what's silently shrinking the batch.
+        console.log('[GEN DUP]', { gen: generationId, answer, original: c.answer });
+        continue;
+      }
       seenAnswers.add(answer);
       deduped.push({
         question: originalPromptQuestion,
@@ -437,6 +667,9 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       if (deduped.length >= requestedCount) break;
     }
 
+    // DEBUG: snapshot after clamp/dedup, before tag filtering.
+    console.log('[GEN AFTER CLAMP+DEDUP]', { gen: generationId, from: rawCards.length, to: deduped.length });
+
     try {
       const tagSet = new Set(incomingTags.map(t => t.toLowerCase()));
       const beforeTagFilter = deduped.length;
@@ -444,6 +677,11 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         deduped = deduped.filter(c => !tagSet.has(c.answer.toLowerCase()));
       }
       const removedTagOnly = beforeTagFilter - deduped.length;
+      // DEBUG: full picture of the tag filter step — what tags were active,
+      // and how many cards survived. If incomingTags accidentally overlaps
+      // common model answers (e.g. tag "yes"), this filter can wipe a whole
+      // batch, and this line will make that obvious.
+      console.log('[GEN TAG FILTER RESULT]', { gen: generationId, tagSet: [...tagSet], before: beforeTagFilter, after: deduped.length });
       if (removedTagOnly > 0) {
         console.log('[TAG FILTER] removed tag-only answers', { gen: generationId, removed: removedTagOnly });
       }
@@ -469,7 +707,6 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     let keptEmbeddings: (number[] | null)[] = [];
     let duplicatesRemovedEmbedding = 0;
 
-    const lite = req.query.lite === '1' || req.query.lite === 'true' || (rawInput && (rawInput.lite === true || rawInput.lite === 1));
     const embedRequested = (req.query.embed === '1' || req.query.embed === 'true' || rawInput.embed === true || rawInput.embed === 1);
 
     mark('embedding_start');
@@ -483,6 +720,9 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
         keptEmbeddings = keptEmbeddings.filter((_, i) => keep[i]);
         duplicatesRemovedEmbedding = removed;
         metrics.duplicatesRemoved += removed;
+        // DEBUG: embedding-based dedup can also silently remove an entire
+        // batch if the same context was generated recently.
+        console.log('[GEN EMBED DEDUP]', { gen: generationId, removed, remaining: keptCards.length });
       } catch (e) {
         console.error('[EMBED FAIL - continuing]', e);
         keptEmbeddings = Array(keptCards.length).fill(null);
@@ -505,38 +745,51 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     console.log('[GEN CLEANED]', { gen: generationId, input: rawCards.length, valid: keptCards.length, rejected_schema: cleanedStats.rejected_schema, rejected_dup_simple: cleanedStats.rejected_dup_simple });
 
-    const avoidGenId = (rawInput.avoid_generation_id || req.query.avoid_generation_id || '').toString().trim() || null;
-    if (avoidGenId && /^[0-9a-fA-F-]{36}$/.test(avoidGenId)) {
-      try {
-        const { data: prevQs } = await getSupabase()
-          .from('flashcards')
-          .select('question')
-          .eq('generation_id', avoidGenId)
-          .eq('user_id', user.id);
-        if (prevQs?.length) {
-          const prevSet = new Set(prevQs.map(r => r.question.toLowerCase()));
-          const before = keptCards.length;
-          keptCards = keptCards.filter(c => !prevSet.has(c.question.toLowerCase()));
-          if (before !== keptCards.length) {
-            console.log('[AVOID FILTER]', { generationId, avoid_generation_id: avoidGenId, removed: before - keptCards.length });
-          }
-          if (keptEmbeddings.length === before) {
-            const filteredEmbeddings: typeof keptEmbeddings = [];
-            keptCards.forEach(c => {
-              const idx = rawCards.findIndex((rc: { question: string }) => rc.question === c.question);
-              filteredEmbeddings.push(keptEmbeddings[idx] || null);
-            });
-            keptEmbeddings = filteredEmbeddings;
-          }
+    // Safety-net pass: the model was already told about `previousAnswers`
+    // (see AVOID PRELOAD above) and cleanAnswer() already rejects hardBan
+    // matches during generation, so this should rarely remove anything now.
+    // Kept as a cheap in-memory check (no second DB round-trip) in case a
+    // duplicate slips through.
+    if (previousAnswers.length) {
+      const prevSet = new Set(previousAnswers.map(a => a.toLowerCase()));
+      const before = keptCards.length;
+      keptCards = keptCards.filter(c => !prevSet.has(c.answer.toLowerCase()));
+      if (before !== keptCards.length) {
+        console.log('[AVOID FILTER]', { generationId, removed: before - keptCards.length });
+        if (keptEmbeddings.length === before) {
+          const filteredEmbeddings: typeof keptEmbeddings = [];
+          keptCards.forEach(c => {
+            const idx = rawCards.findIndex((rc: { answer: string }) => rc.answer === c.answer);
+            filteredEmbeddings.push(keptEmbeddings[idx] || null);
+          });
+          keptEmbeddings = filteredEmbeddings;
         }
-      } catch (e) {
-        console.warn('[AVOID FILTER ERROR]', e);
       }
     }
     mark('reuse_decision_end');
 
     if (!keptCards.length) {
-      await logGenerationComplete({ generationId: generationId ?? '', cards: [], raw: null, latencyMs: Date.now() - t0, modelName: modelUsed, error: 'no_valid_cards' });
+      console.log('[GEN FAILURE RAW]', { gen: generationId, rawSnippet: (rawContent || '').slice(0, 1000) });
+      // DEBUG: full context dump for the failure case — this is the single
+      // most useful log line for diagnosing "No valid cards generated".
+      // Read it top-to-bottom against the earlier [GEN RAW] / [GEN SCHEMA
+      // FILTER] / [GEN AFTER CLAMP+DEDUP] / [GEN TAG FILTER RESULT] lines
+      // for the same `gen` id to see exactly which stage dropped to zero.
+      console.error('[GEN FAILURE FULL CONTEXT]', {
+        gen: generationId,
+        modelUsed,
+        promptVersion,
+        answerLength,
+        requestedCount,
+        incomingTags,
+        preferFood,
+        preferEmotions,
+        contextSnippet: context.slice(0, 300),
+        modelRawCardsCount: (cards || []).length,
+        rawCardsAfterSchemaFilter: rawCards.length,
+        dedupedCount: deduped.length,
+      });
+      await logGenerationComplete({ generationId: generationId ?? '', cards: [], raw: rawContent || null, latencyMs: Date.now() - t0, modelName: modelUsed, error: 'no_valid_cards' });
       if (isStreamRequest) {
         res.write(JSON.stringify({ type: 'error', error: 'No valid cards generated', generation_id: generationId ?? '' }) + '\n');
         res.end();
@@ -597,14 +850,20 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
     }
     console.log('[flashcards insert ok]', { generationId, inserted: inserted?.length || 0 });
 
-    const responseCards = (inserted ?? []).map((card: any, i: number) => ({
-      id: card.id,
-      question: card.question,
-      answer: card.answer,
-      tags: finalTags,
-      asset_filename: card.asset_filename || 'blank.svg',
-      fitz: keptCards[i]?.fitz ?? null,
-    }));
+    const responseCards = (inserted ?? []).map((card: any, i: number) => {
+      // Find the matching generated card (by answer) to surface any resolved
+      // OpenSymbols `assetUrl` that may have been attached during generation.
+      const genMatch = (cards || []).find((g: any) => String(g.answer).toLowerCase() === String(card.answer).toLowerCase());
+      return {
+        id: card.id,
+        question: card.question,
+        answer: card.answer,
+        tags: finalTags,
+        asset_filename: card.asset_filename || 'blank.svg',
+        asset_url: genMatch?.assetUrl ?? null,
+        fitz: keptCards[i]?.fitz ?? null,
+      };
+    });
 
     if (finalTags.length && inserted?.length) {
       console.log('[TAG INSERT]', { gen: generationId, tagCount: finalTags.length });
@@ -670,6 +929,13 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
       } catch {}
     }
     const isClient = /Invalid body|context exceeds/.test(e?.message || '');
+    // e?.message is only safe to hand back for the known, deliberately-
+    // thrown client validation errors matched above (isClient) — those are
+    // controlled, user-facing text. For anything else (genuine 500s —
+    // Supabase/OpenAI SDK internals, etc.) fall back to a generic message
+    // instead of leaking raw internals to the client; full detail is
+    // already logged server-side via console.error above.
+    const safeMessage = isClient ? (e?.message || 'Invalid request') : 'Server error';
 
     // If we already started streaming we can't send a status code — just write error line
     const isStreamRequest =
@@ -679,13 +945,13 @@ app.post('/generate_flashcards', async (req: TraceRequest, res: Response) => {
 
     if (isStreamRequest && res.headersSent) {
       try {
-        res.write(JSON.stringify({ type: 'error', error: e?.message || 'Server error' }) + '\n');
+        res.write(JSON.stringify({ type: 'error', error: safeMessage }) + '\n');
         res.end();
       } catch {}
       return;
     }
 
-    res.status(isClient ? 400 : 500).json({ error: e?.message || 'Server error', generation_id: generationId, traceId: req.traceId });
+    res.status(isClient ? 400 : 500).json({ error: safeMessage, generation_id: generationId, traceId: req.traceId });
   }
 });
 
@@ -775,6 +1041,50 @@ app.delete('/flashcards/:id/favorite', async (req, res) => {
   }
 });
 
+// Permanently deletes the signed-in user's account: every row they own
+// across every table, then the actual Supabase auth user. Deletes children
+// before parents so this works regardless of whether DB-level cascades are
+// configured. Irreversible — the client is expected to have already
+// confirmed with the user before calling this.
+app.delete('/account', async (req, res) => {
+  const user = (req as any).user;
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+  try {
+    const sb = getSupabase();
+
+    const { data: cardRows } = await sb.from('flashcards').select('id').eq('user_id', user.id);
+    const cardIds = (cardRows || []).map((r: any) => r.id);
+    if (cardIds.length) {
+      await sb.from('flashcard_tags').delete().in('card_id', cardIds);
+    }
+    await sb.from('flashcard_favorites').delete().eq('user_id', user.id);
+    await sb.from('flashcards').delete().eq('user_id', user.id);
+    await sb.from('flashcard_generations').delete().eq('user_id', user.id);
+
+    const { data: tagRows } = await sb.from('user_tags').select('id').eq('user_id', user.id);
+    const tagIds = (tagRows || []).map((r: any) => r.id);
+    if (tagIds.length) {
+      await sb.from('tag_contexts').delete().in('tag_id', tagIds);
+    }
+    await sb.from('user_tags').delete().eq('user_id', user.id);
+
+    await sb.from('users').delete().eq('id', user.id);
+
+    const { error: authDeleteErr } = await sb.auth.admin.deleteUser(user.id);
+    if (authDeleteErr) {
+      console.error('[ACCOUNT DELETE - AUTH ERROR]', authDeleteErr);
+      return res.status(500).json({ error: 'account_delete_failed' });
+    }
+
+    console.log('[ACCOUNT DELETED]', { userId: user.id });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[ACCOUNT DELETE ERROR]', e);
+    res.status(500).json({ error: 'account_delete_failed' });
+  }
+});
+
 // ============================================
 // OPTIMIZATION SCREEN API ROUTES
 // ============================================
@@ -859,10 +1169,16 @@ app.post('/users/seed-default-favorites', async (req, res) => {
 
 app.post('/webhooks/supabase', async (req, res) => {
   const secret = process.env.WEBHOOK_SECRET;
-  if (secret) {
-    const header = (req.headers['x-webhook-secret'] || req.headers['x-supabase-signature']) as string | undefined;
-    if (!header || header !== secret) { console.warn('[WEBHOOK] invalid secret header'); return res.status(403).json({ error: 'forbidden' }); }
+  // Fail CLOSED, not open: if no secret is configured, refuse every request
+  // rather than silently accepting them unauthenticated. This endpoint can
+  // write flashcards/favorites for any user_id in the request body, so an
+  // unset secret previously meant anyone could seed arbitrary accounts.
+  if (!secret) {
+    console.error('[WEBHOOK] WEBHOOK_SECRET is not configured — refusing request. Set WEBHOOK_SECRET in the environment to enable this endpoint.');
+    return res.status(503).json({ error: 'webhook_not_configured' });
   }
+  const header = (req.headers['x-webhook-secret'] || req.headers['x-supabase-signature']) as string | undefined;
+  if (!header || header !== secret) { console.warn('[WEBHOOK] invalid secret header'); return res.status(403).json({ error: 'forbidden' }); }
   try {
     const payload = req.body || {};
     const userObj = payload.user || payload.record || payload.new || payload.data || payload;
